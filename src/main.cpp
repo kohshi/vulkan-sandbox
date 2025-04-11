@@ -57,6 +57,18 @@ bool Load(std::filesystem::path filePath, std::vector<char>& data) {
 }
 }
 
+struct GpuBuffer
+{
+  GpuBuffer() :
+  buffer(VK_NULL_HANDLE),
+  memory(VK_NULL_HANDLE),
+  mapped(nullptr) {}
+  VkBuffer buffer;
+  VkDeviceMemory memory;
+
+  void* mapped;
+};
+
 class Application {
 public:
   Application() :
@@ -67,6 +79,19 @@ public:
   descriptorPool_(VK_NULL_HANDLE),
   commandBuffer_(VK_NULL_HANDLE) {}
   ~Application() {
+    
+    if (inputBuffer_.buffer != VK_NULL_HANDLE) {
+      vkDestroyBuffer(vkDevice_, inputBuffer_.buffer, nullptr);
+    }
+    if (inputBuffer_.memory != VK_NULL_HANDLE) {
+      vkFreeMemory(vkDevice_, inputBuffer_.memory, nullptr);
+    }
+    if (outputBuffer_.buffer != VK_NULL_HANDLE) {
+      vkDestroyBuffer(vkDevice_, outputBuffer_.buffer, nullptr);
+    }
+    if (outputBuffer_.memory != VK_NULL_HANDLE) {
+      vkFreeMemory(vkDevice_, outputBuffer_.memory, nullptr);
+    }
     if (commandBuffer_ != VK_NULL_HANDLE) {
       vkFreeCommandBuffers(vkDevice_, commandPool_, 1, &commandBuffer_);
     }
@@ -216,7 +241,7 @@ public:
     std::cout << "==== Allocate buffer & memory ====" << std::endl;
 
     // input buffer
-    const uint32_t numElements = 10;
+    const uint32_t numElements = 32;
 	  const uint32_t bufferSize = numElements * sizeof(int32_t);
 
     const VkDeviceSize memorySize = bufferSize * 2; // 2 = in + out
@@ -229,25 +254,23 @@ public:
         break;
       }
     }
-
     // Check if memory type is found
     CHK(((memoryTypeIndex == VK_MAX_MEMORY_TYPES) ? VK_ERROR_OUT_OF_HOST_MEMORY : VK_SUCCESS));
+
     const VkMemoryAllocateInfo memoryAllocateInfo {
       .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
       0,
       .allocationSize = memorySize,
       .memoryTypeIndex = memoryTypeIndex,
     };
-    VkDeviceMemory memory;
-    CHK(vkAllocateMemory(vkDevice_, &memoryAllocateInfo, 0, &memory));
+    CHK(vkAllocateMemory(vkDevice_, &memoryAllocateInfo, 0, &inputBuffer_.memory));
 
     // use map memory to copy data in easy way
-    int32_t *data;
-    CHK(vkMapMemory(vkDevice_, memory, 0, memorySize, 0, (void**)&data));
+    CHK(vkMapMemory(vkDevice_, inputBuffer_.memory, 0, memorySize, 0, &inputBuffer_.mapped));
     for (uint32_t i = 0; i < numElements; ++i) {
-      data[i] = i;
+      reinterpret_cast<int32_t*>(inputBuffer_.mapped)[i] = i;
     }
-    vkUnmapMemory(vkDevice_, memory);
+    vkUnmapMemory(vkDevice_, inputBuffer_.memory);
 
     VkBufferCreateInfo bufferCreateInfo{
       .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -255,13 +278,15 @@ public:
       .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
     };
     
-    CHK(vkCreateBuffer(vkDevice_, &bufferCreateInfo, nullptr, &inputBuffer_));
-    CHK(vkBindBufferMemory(vkDevice_, inputBuffer_, memory, 0));
+    CHK(vkCreateBuffer(vkDevice_, &bufferCreateInfo, nullptr/*VkAllocationCallbacks*/, &inputBuffer_.buffer));
+    CHK(vkBindBufferMemory(vkDevice_, inputBuffer_.buffer, inputBuffer_.memory, 0/*memoryOffset*/));
 
     // output buffer
-    CHK(vkCreateBuffer(vkDevice_, &bufferCreateInfo, nullptr, &outputBuffer_));
+    CHK(vkAllocateMemory(vkDevice_, &memoryAllocateInfo, 0, &outputBuffer_.memory));
+    CHK(vkCreateBuffer(vkDevice_, &bufferCreateInfo, nullptr/*VkAllocationCallbacks*/, &outputBuffer_.buffer));
+    CHK(vkBindBufferMemory(vkDevice_, outputBuffer_.buffer, outputBuffer_.memory, 0/*memoryOffset*/));
 
-    std::cout << "==== Create descriptor set ====" << std::endl;
+    std::cout << "==== Create descriptor set layout & pipeline layout ====" << std::endl;
     std::vector<VkDescriptorSetLayoutBinding> layoutBindings{
       {// input buffer
         .binding = 0,
@@ -306,18 +331,74 @@ public:
     };
     CHK(vkCreateComputePipelines(vkDevice_, VK_NULL_HANDLE, 1, &computePipelineCI, nullptr, &pipeline_));
 
+    std::cout << "==== Allocate descriptor set ====" << std::endl;
+    std::vector<VkDescriptorSetLayout> dsLayouts{ descriptorSetLayout_ };
+    VkDescriptorSetAllocateInfo dsAllocInfoComp = {
+      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+      .descriptorPool = descriptorPool_,
+      .descriptorSetCount = uint32_t(dsLayouts.size()),
+      .pSetLayouts = dsLayouts.data(),
+    };
 
-    // std::cout << "==== Allocate descriptor set ====" << std::endl;
-    // std::vector<VkDescriptorSetLayout> dsLayouts{ descriptorSetLayout_ };
-    // VkDescriptorSetAllocateInfo dsAllocInfoComp = {
-    //   .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-    //   .descriptorPool = descriptorPool_
-    //   .descriptorSetCount = uint32_t(dsLayouts.size()),
-    //   .pSetLayouts = dsLayouts.data(),
-    // };
-    // std::vector<VkDescriptorSet> descriptorSets(dsLayouts.size());
-    // CHK(vkAllocateDescriptorSets(vkDevice, &dsAllocInfoComp, descriptorSets.data()));
+    descriptorSets_.resize(dsLayouts.size());
+    CHK(vkAllocateDescriptorSets(vkDevice_, &dsAllocInfoComp, descriptorSets_.data()));
 
+    VkDescriptorBufferInfo inputBufferInfo{
+      .buffer = inputBuffer_.buffer,
+      .offset = 0,
+      .range = VK_WHOLE_SIZE,
+    };
+    VkDescriptorBufferInfo outputBufferInfo{
+      .buffer = outputBuffer_.buffer,
+      .offset = 0,
+      .range = VK_WHOLE_SIZE,
+    };
+    std::vector<VkWriteDescriptorSet> writeDescriptorSets{
+      {// input buffer
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = descriptorSets_[0],
+        .dstBinding = 0,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .pBufferInfo = &inputBufferInfo,
+      },
+      {// output buffer
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = descriptorSets_[0],
+        .dstBinding = 1,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .pBufferInfo = &outputBufferInfo,
+      },
+    };
+    vkUpdateDescriptorSets(vkDevice_, uint32_t(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
+
+    std::cout << "==== Begin command buffer ====" << std::endl;
+
+    VkCommandBufferBeginInfo commandBufferBeginInfo{
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+      .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+    CHK(vkBeginCommandBuffer(commandBuffer_, &commandBufferBeginInfo));
+    vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_);
+    vkCmdBindDescriptorSets(commandBuffer_, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout_, 0, 1, &descriptorSets_[0], 0, nullptr);
+    vkCmdDispatch(commandBuffer_, numElements / 32, 1, 1);
+    CHK(vkEndCommandBuffer(commandBuffer_));
+
+    VkSubmitInfo VkSubmitInfo = {
+      .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+      .commandBufferCount = 1,
+      .pCommandBuffers = &commandBuffer_,
+    };
+    CHK(vkQueueSubmit(computeQueue_, 1, &VkSubmitInfo, VK_NULL_HANDLE));
+    CHK(vkQueueWaitIdle(computeQueue_));
+
+    CHK(vkMapMemory(vkDevice_, outputBuffer_.memory, 0, memorySize, 0, &outputBuffer_.mapped));
+    for (uint32_t i = 0; i < numElements; ++i) {
+      std::cout << reinterpret_cast<int32_t*>(outputBuffer_.mapped)[i] << " ";
+    }
+    std::cout << std::endl;
+    vkUnmapMemory(vkDevice_, outputBuffer_.memory);
   }
 
 private:
@@ -329,12 +410,12 @@ private:
   VkCommandPool commandPool_;
   VkDescriptorPool descriptorPool_;
   VkCommandBuffer commandBuffer_;
-  VkBuffer inputBuffer_;
-  VkBuffer outputBuffer_;
+  GpuBuffer inputBuffer_;
+  GpuBuffer outputBuffer_;
   VkDescriptorSetLayout descriptorSetLayout_;
   VkPipelineLayout pipelineLayout_;
   VkPipeline pipeline_;
-  VkDescriptorSet descriptorSet_;
+  std::vector<VkDescriptorSet> descriptorSets_;
 };
 
 int main(int argc, const char * const argv[]) {
