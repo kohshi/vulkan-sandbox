@@ -116,11 +116,26 @@ public:
     // ci.ppEnabledLayerNames = layers.data();
     CHK(vkCreateInstance(&ci, nullptr, &vkInstance_));
 
+    uint32_t version = 0;
+    vkEnumerateInstanceVersion(&version);
+    std::cout << "Vulkan Instance version: " <<
+          VK_VERSION_MAJOR(version) << "." <<
+          VK_VERSION_MINOR(version) << "." <<
+          VK_VERSION_PATCH(version) << std::endl;
+
     std::cout << "==== Create physical device ====" << std::endl;
     uint32_t count = 0;
     CHK(vkEnumeratePhysicalDevices(vkInstance_, &count, nullptr));
     std::vector<VkPhysicalDevice> physDevs(count);
     CHK(vkEnumeratePhysicalDevices(vkInstance_, &count, physDevs.data()));
+    for (uint32_t i = 0; i < count; ++i) {
+      VkPhysicalDeviceProperties props;
+      vkGetPhysicalDeviceProperties(physDevs[i], &props);
+      std::cout << "GPU " << i << ": " << props.deviceName << " "
+                << VK_VERSION_MAJOR(props.apiVersion) << "."
+                << VK_VERSION_MINOR(props.apiVersion) << "." 
+                << VK_VERSION_PATCH(props.apiVersion) << std::endl;
+    }
 
     // use gpu[0]
     vkPhysicalDevice_ = physDevs[0];
