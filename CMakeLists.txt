@@ -42,7 +42,21 @@ add_custom_command(
   COMMENT "Creating ${SHADER_BINARY_DIR}"
 )
 
-if (Vulkan_glslangValidator_FOUND)
+if (Vulkan_glslc_FOUND)
+foreach(source IN LISTS SHADERS)
+  get_filename_component(FILENAME ${source} NAME)
+  add_custom_command(
+    COMMAND
+      ${Vulkan_GLSLC_EXECUTABLE}
+      -o ${SHADER_BINARY_DIR}/${FILENAME}.spv
+      ${source}
+    OUTPUT ${SHADER_BINARY_DIR}/${FILENAME}.spv
+    DEPENDS ${SHADER_BINARY_DIR}
+    COMMENT "Compiling shader(glslc): ${FILENAME}"
+  )
+  list(APPEND SPV_SHADERS ${SHADER_BINARY_DIR}/${FILENAME}.spv)
+  endforeach()
+elseif (Vulkan_glslangValidator_FOUND)
   foreach(source IN LISTS SHADERS)
     get_filename_component(FILENAME ${source} NAME)
     add_custom_command(
@@ -54,20 +68,6 @@ if (Vulkan_glslangValidator_FOUND)
       OUTPUT ${SHADER_BINARY_DIR}/${FILENAME}.spv
       DEPENDS ${SHADER_BINARY_DIR}
       COMMENT "Compiling shader(glsanvValidator): ${FILENAME}"
-    )
-    list(APPEND SPV_SHADERS ${SHADER_BINARY_DIR}/${FILENAME}.spv)
-  endforeach()
-elseif (Vulkan_glslc_FOUND)
-  foreach(source IN LISTS SHADERS)
-    get_filename_component(FILENAME ${source} NAME)
-    add_custom_command(
-      COMMAND
-        ${Vulkan_GLSLC_EXECUTABLE}
-        -o ${SHADER_BINARY_DIR}/${FILENAME}.spv
-        ${source}
-      OUTPUT ${SHADER_BINARY_DIR}/${FILENAME}.spv
-      DEPENDS ${SHADER_BINARY_DIR}
-      COMMENT "Compiling shader(glslc): ${FILENAME}"
     )
     list(APPEND SPV_SHADERS ${SHADER_BINARY_DIR}/${FILENAME}.spv)
   endforeach()
@@ -84,6 +84,7 @@ add_custom_target(compile-shaders ALL DEPENDS ${SPV_SHADERS})
 
 # Add the executable
 add_executable(main src/main.cpp)
+add_dependencies(main compile-shaders)
 
 # Add the binary tree to the search path for include files
 target_include_directories(main PUBLIC
