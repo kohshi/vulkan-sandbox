@@ -112,7 +112,7 @@ public:
     }
   }
 
-  void run() {
+  void initialize() {
     std::cout << "==== Create vulkan instance ====" << std::endl;
     const VkApplicationInfo appInfo = {
       .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, // sType
@@ -225,21 +225,13 @@ public:
       .pPoolSizes = poolSizes.data(),
     };
     CHK(vkCreateDescriptorPool(vkDevice_, &descriptorPoolCI, nullptr, &descriptorPool_));
+  }
 
-    std::cout << "==== Create command buffer ====" << std::endl;
-  
-    VkCommandBufferAllocateInfo commandAI{
-      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-      .commandPool = commandPool_,
-      .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-      .commandBufferCount = 1,
-    };
-    CHK(vkAllocateCommandBuffers(vkDevice_, &commandAI, &commandBuffer_));
+  void run() {
 
-
-
+    initialize();
+    
     std::cout << "==== Allocate buffer & memory ====" << std::endl;
-
     // input buffer
     const uint32_t numElements = 32;
 	  const uint32_t bufferSize = numElements * sizeof(int32_t);
@@ -271,6 +263,7 @@ public:
       reinterpret_cast<int32_t*>(inputBuffer_.mapped)[i] = i;
     }
     vkUnmapMemory(vkDevice_, inputBuffer_.memory);
+    inputBuffer_.mapped = nullptr;
 
     VkBufferCreateInfo bufferCreateInfo{
       .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -373,6 +366,16 @@ public:
     };
     vkUpdateDescriptorSets(vkDevice_, uint32_t(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
 
+    std::cout << "==== Create command buffer ====" << std::endl;
+  
+    VkCommandBufferAllocateInfo commandAI{
+      .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+      .commandPool = commandPool_,
+      .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+      .commandBufferCount = 1,
+    };
+    CHK(vkAllocateCommandBuffers(vkDevice_, &commandAI, &commandBuffer_));
+
     std::cout << "==== Begin command buffer ====" << std::endl;
 
     VkCommandBufferBeginInfo commandBufferBeginInfo{
@@ -393,12 +396,21 @@ public:
     CHK(vkQueueSubmit(computeQueue_, 1, &VkSubmitInfo, VK_NULL_HANDLE));
     CHK(vkQueueWaitIdle(computeQueue_));
 
+    CHK(vkMapMemory(vkDevice_, inputBuffer_.memory, 0, memorySize, 0, &inputBuffer_.mapped));
+    for (uint32_t i = 0; i < numElements; ++i) {
+      std::cout << reinterpret_cast<int32_t*>(inputBuffer_.mapped)[i] << " ";
+    }
+    std::cout << std::endl;
+    vkUnmapMemory(vkDevice_, inputBuffer_.memory);
+    inputBuffer_.mapped = nullptr;
+
     CHK(vkMapMemory(vkDevice_, outputBuffer_.memory, 0, memorySize, 0, &outputBuffer_.mapped));
     for (uint32_t i = 0; i < numElements; ++i) {
       std::cout << reinterpret_cast<int32_t*>(outputBuffer_.mapped)[i] << " ";
     }
     std::cout << std::endl;
     vkUnmapMemory(vkDevice_, outputBuffer_.memory);
+    outputBuffer_.mapped = nullptr;
   }
 
 private:
