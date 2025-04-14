@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.13)
 
 project(
-    minimal-vulkan-compute-shader
+    vulkan-sandbox
     VERSION 0.0.1
 	DESCRIPTION "A minimal application with Vulkan Compute Shaders"
     LANGUAGES CXX)
@@ -18,7 +18,8 @@ find_package(Vulkan REQUIRED)
 #                               SHADERS                               #
 #######################################################################
 
-find_program(glslc_executable NAMES glslc HINTS Vulkan::glslc)
+find_program(glslc_executable NAMES glslc)
+find_program(glslangValidator_executable NAMES glslangValidator)
 
 set(SHADER_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/shaders)
 set(SHADER_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/shaders)
@@ -43,30 +44,30 @@ add_custom_command(
 )
 
 if (Vulkan_glslc_FOUND)
-foreach(source IN LISTS SHADERS)
-  get_filename_component(FILENAME ${source} NAME)
-  add_custom_command(
-    COMMAND
-      ${Vulkan_GLSLC_EXECUTABLE}
-      -o ${SHADER_BINARY_DIR}/${FILENAME}.spv
-      ${source}
-    OUTPUT ${SHADER_BINARY_DIR}/${FILENAME}.spv
-    DEPENDS ${SHADER_BINARY_DIR}
-    COMMENT "Compiling shader(glslc): ${FILENAME}"
-  )
-  list(APPEND SPV_SHADERS ${SHADER_BINARY_DIR}/${FILENAME}.spv)
+  foreach(source IN LISTS SHADERS)
+    get_filename_component(FILENAME ${source} NAME)
+    add_custom_command(
+      COMMAND
+        ${glslc_executable}
+        -o ${SHADER_BINARY_DIR}/${FILENAME}.spv
+        ${source}
+      OUTPUT ${SHADER_BINARY_DIR}/${FILENAME}.spv
+      DEPENDS ${source} ${SHADER_BINARY_DIR}
+      COMMENT "Compiling shader(glslc): ${FILENAME}"
+    )
+    list(APPEND SPV_SHADERS ${SHADER_BINARY_DIR}/${FILENAME}.spv)
   endforeach()
 elseif (Vulkan_glslangValidator_FOUND)
   foreach(source IN LISTS SHADERS)
     get_filename_component(FILENAME ${source} NAME)
     add_custom_command(
       COMMAND
-        ${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}
+        ${glslangValidator_executable}
         -V
         -o ${SHADER_BINARY_DIR}/${FILENAME}.spv
         ${source}
       OUTPUT ${SHADER_BINARY_DIR}/${FILENAME}.spv
-      DEPENDS ${SHADER_BINARY_DIR}
+      DEPENDS ${source} ${SHADER_BINARY_DIR}
       COMMENT "Compiling shader(glsanvValidator): ${FILENAME}"
     )
     list(APPEND SPV_SHADERS ${SHADER_BINARY_DIR}/${FILENAME}.spv)
