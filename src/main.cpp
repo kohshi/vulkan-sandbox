@@ -153,18 +153,27 @@ public:
     uint32_t count = 0;
     CHK(vkEnumeratePhysicalDevices(instance_, &count, nullptr));
     std::vector<VkPhysicalDevice> physDevs(count);
+    std::vector<VkPhysicalDeviceProperties> props(count);
     CHK(vkEnumeratePhysicalDevices(instance_, &count, physDevs.data()));
     for (uint32_t i = 0; i < count; ++i) {
-      VkPhysicalDeviceProperties props;
-      vkGetPhysicalDeviceProperties(physDevs[i], &props);
-      std::cout << "GPU " << i << ": " << props.deviceName << " "
-                << VK_VERSION_MAJOR(props.apiVersion) << "."
-                << VK_VERSION_MINOR(props.apiVersion) << "." 
-                << VK_VERSION_PATCH(props.apiVersion) << std::endl;
+      vkGetPhysicalDeviceProperties(physDevs[i], &props[i]);
+      std::cout << "GPU " << i << ": " << props[i].deviceName << " "
+                << VK_VERSION_MAJOR(props[i].apiVersion) << "."
+                << VK_VERSION_MINOR(props[i].apiVersion) << "." 
+                << VK_VERSION_PATCH(props[i].apiVersion) << std::endl;
     }
 
     // use gpu[0]
-    physiscalDevice_ = physDevs[0];
+    const int usedIndex = 0;
+    physiscalDevice_ = physDevs[usedIndex];
+    const VkPhysicalDeviceLimits& limits = props[usedIndex].limits;
+    std::cout << "Using GPU " << usedIndex << ": " << props[usedIndex].deviceName << std::endl;
+    std::cout << "==== Physical device limits ====" << std::endl;
+    std::cout << "maxUniformBufferRange: " << limits.maxUniformBufferRange << std::endl;
+    std::cout << "maxStorageBufferRange: " << limits.maxStorageBufferRange << std::endl;
+    std::cout << "maxPushConstantsSize: " << limits.maxPushConstantsSize << std::endl;
+    std::cout << "maxMemoryAllocationCount: " << limits.maxMemoryAllocationCount << std::endl;
+    std::cout << "maxSamplerAllocationCount: " << limits.maxSamplerAllocationCount << std::endl;
 
     // Get memory properties
     vkGetPhysicalDeviceMemoryProperties(physiscalDevice_, &physMemoryProperties_);
