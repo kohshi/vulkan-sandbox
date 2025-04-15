@@ -1,8 +1,16 @@
 #version 450
+#extension GL_EXT_debug_printf : false
+
 layout(local_size_x = 32, local_size_y = 1) in;
 
-layout(set = 0, binding = 0) buffer lay0 { int inbuf[]; };
-layout(set = 0, binding = 1) buffer lay1 { int outbuf[]; };
+layout(set = 0, binding = 0) uniform params
+{
+    uint grid_x;
+	uint grid_y;
+	uint grid_z;
+};
+layout(set = 0, binding = 1) buffer lay0 { int inbuf[]; };
+layout(set = 0, binding = 2) buffer lay1 { int outbuf[]; };
 
 void main() {
 	// drop threads outside the buffer dimensions.
@@ -11,5 +19,6 @@ void main() {
 	}
 	const uint id = gl_GlobalInvocationID.x; // current offset
 
+	//debugPrintfEXT("id %u: grid %u, %u, %u\n", id, grid_x, grid_y, grid_z);
 	outbuf[id] = inbuf[id] * inbuf[id];
 }

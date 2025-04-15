@@ -69,6 +69,9 @@ public:
   pipelineLayout_(VK_NULL_HANDLE),
   pipeline_(VK_NULL_HANDLE) {}
   ~Application() {
+    if (uniformBuffer_.get() != nullptr) {
+      uniformBuffer_.reset();
+    }
     if (inputBuffer_.get() != nullptr) {
       inputBuffer_.reset();
     }
@@ -130,16 +133,28 @@ public:
 
     std::vector<const char*> layers;
     std::vector<const char*> extensions;
+    VkValidationFeaturesEXT validationFeatures = {
+      .sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
+      .enabledValidationFeatureCount = 0,
+      .pEnabledValidationFeatures = nullptr,
+    };
+    std::vector<VkValidationFeatureEnableEXT>  validationFeatEnables = {
+      VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT
+    };
     if (gUseValidation)
     {
       layers.push_back("VK_LAYER_KHRONOS_validation");
-      extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+      // extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+      validationFeatures.enabledValidationFeatureCount = validationFeatEnables.size();
+      validationFeatures.pEnabledValidationFeatures = validationFeatEnables.data();
+
+      ci.enabledExtensionCount = uint32_t(extensions.size());
+      ci.ppEnabledExtensionNames = extensions.data();
+      ci.enabledLayerCount = uint32_t(layers.size());
+      ci.ppEnabledLayerNames = layers.data();
+      ci.pNext = &validationFeatures;
     }
 
-    ci.enabledExtensionCount = uint32_t(extensions.size());
-    ci.ppEnabledExtensionNames = extensions.data();
-    ci.enabledLayerCount = uint32_t(layers.size());
-    ci.ppEnabledLayerNames = layers.data();
     CHK(vkCreateInstance(&ci, nullptr, &instance_));
 
     uint32_t version = 0;
@@ -222,13 +237,17 @@ public:
     // number of descriptors to be used by the application, 
     // and when a descriptor set is allocated, it is cut out of the pool.
     const uint32_t descCount = 100;
-    std::vector<VkDescriptorPoolSize> poolSizes = { {
+    std::vector<VkDescriptorPoolSize> poolSizes {
+      {
+        .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = descCount,
+      },
       {
         .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         .descriptorCount = descCount,
       },
-    } };
-    VkDescriptorPoolCreateInfo descriptorPoolCI{
+    };
+    VkDescriptorPoolCreateInfo descriptorPoolCI {
       .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
       .maxSets = descCount,
       .poolSizeCount = uint32_t(poolSizes.size()),
@@ -242,6 +261,15 @@ public:
     initialize();
     
     std::cout << "==== Allocate buffer & memory ====" << std::endl;
+    // Allocate uniform buffer
+    struct params{
+      uint32_t x, y, z;
+    };
+    params grid = { 1, 2, 4 };
+    uniformBuffer_.reset(new UniformBuffer(device_, physMemoryProperties_));
+    uniformBuffer_->allocate(sizeof(params));
+    memcpy(uniformBuffer_->mapped_, &grid, sizeof(params));
+    
     // Allocate input and output buffers
     const uint32_t numElements = 32;
 	  const uint32_t bufferSize = numElements * sizeof(int32_t);
@@ -253,27 +281,33 @@ public:
     d_inputBuffer_.reset(new DeviceBuffer(device_, physMemoryProperties_));
     d_outputBuffer_.reset(new DeviceBuffer(device_, physMemoryProperties_));
 
-    inputBuffer_->allocate(device_, memorySize);
-    outputBuffer_->allocate(device_, memorySize);
+    inputBuffer_->allocate(memorySize);
+    outputBuffer_->allocate(memorySize);
 
-    d_inputBuffer_->allocate(device_, memorySize);
-    d_outputBuffer_->allocate(device_, memorySize);
+    d_inputBuffer_->allocate(memorySize);
+    d_outputBuffer_->allocate(memorySize);
 
     // Set input data.
     for (uint32_t i = 0; i < numElements; ++i) {
-      reinterpret_cast<int32_t*>(inputBuffer_->mapped)[i] = i;
+      reinterpret_cast<int32_t*>(inputBuffer_->mapped_)[i] = i;
     }
 
     std::cout << "==== Create descriptor set layout & pipeline layout ====" << std::endl;
     std::vector<VkDescriptorSetLayoutBinding> layoutBindings{
-      {// input buffer
+      {// uniform buffer
         .binding = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = 1,
+        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
+      },
+      {// input buffer
+        .binding = 1,
         .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         .descriptorCount = 1,
         .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
       },
       {// output buffer
-        .binding = 1,
+        .binding = 2,
         .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         .descriptorCount = 1,
         .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
@@ -323,21 +357,34 @@ public:
     descriptorSets_.resize(dsLayouts.size());
     CHK(vkAllocateDescriptorSets(device_, &dsAllocInfoComp, descriptorSets_.data()));
 
+    VkDescriptorBufferInfo uniformBufferInfo{
+      .buffer = uniformBuffer_->buffer_,
+      .offset = 0,
+      .range = VK_WHOLE_SIZE,
+    };
     VkDescriptorBufferInfo inputBufferInfo{
-      .buffer = d_inputBuffer_->buffer,
+      .buffer = d_inputBuffer_->buffer_,
       .offset = 0,
       .range = VK_WHOLE_SIZE,
     };
     VkDescriptorBufferInfo outputBufferInfo{
-      .buffer = d_outputBuffer_->buffer,
+      .buffer = d_outputBuffer_->buffer_,
       .offset = 0,
       .range = VK_WHOLE_SIZE,
     };
     std::vector<VkWriteDescriptorSet> writeDescriptorSets{
-      {// input buffer
+      {
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
         .dstSet = descriptorSets_[0],
         .dstBinding = 0,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .pBufferInfo = &uniformBufferInfo
+      },
+      {// input buffer
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = descriptorSets_[0],
+        .dstBinding = 1,
         .descriptorCount = 1,
         .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         .pBufferInfo = &inputBufferInfo,
@@ -345,7 +392,7 @@ public:
       {// output buffer
         .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
         .dstSet = descriptorSets_[0],
-        .dstBinding = 1,
+        .dstBinding = 2,
         .descriptorCount = 1,
         .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
         .pBufferInfo = &outputBufferInfo,
@@ -377,13 +424,14 @@ public:
       .dstOffset = 0,
       .size = memorySize,
     };
-    vkCmdCopyBuffer(commandBuffer_, inputBuffer_->buffer, d_inputBuffer_->buffer, 1, &copyRegion);
+    vkCmdCopyBuffer(commandBuffer_, inputBuffer_->buffer_, d_inputBuffer_->buffer_, 1, &copyRegion);
 
     vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_);
     vkCmdBindDescriptorSets(commandBuffer_, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout_, 0, 1, &descriptorSets_[0], 0, nullptr);
+    // group count x,y,z
     vkCmdDispatch(commandBuffer_, numElements / 32, 1, 1);
 
-    vkCmdCopyBuffer(commandBuffer_, d_outputBuffer_->buffer, outputBuffer_->buffer, 1, &copyRegion);
+    vkCmdCopyBuffer(commandBuffer_, d_outputBuffer_->buffer_, outputBuffer_->buffer_, 1, &copyRegion);
     CHK(vkEndCommandBuffer(commandBuffer_));
 
     VkSubmitInfo VkSubmitInfo = {
@@ -395,12 +443,12 @@ public:
     CHK(vkQueueWaitIdle(computeQueue_));
 
     for (uint32_t i = 0; i < numElements; ++i) {
-      std::cout << reinterpret_cast<int32_t*>(inputBuffer_->mapped)[i] << " ";
+      std::cout << reinterpret_cast<int32_t*>(inputBuffer_->mapped_)[i] << " ";
     }
     std::cout << std::endl;
 
     for (uint32_t i = 0; i < numElements; ++i) {
-      std::cout << reinterpret_cast<int32_t*>(outputBuffer_->mapped)[i] << " ";
+      std::cout << reinterpret_cast<int32_t*>(outputBuffer_->mapped_)[i] << " ";
     }
     std::cout << std::endl;
   }
@@ -415,6 +463,8 @@ private:
   VkDescriptorPool descriptorPool_;
   VkCommandBuffer commandBuffer_;
   std::vector<VkShaderModule> shaderModules_;
+
+  std::unique_ptr<UniformBuffer> uniformBuffer_;
   std::unique_ptr<StagingBuffer> inputBuffer_;
   std::unique_ptr<DeviceBuffer> d_inputBuffer_;
   std::unique_ptr<StagingBuffer> outputBuffer_;
