@@ -84,6 +84,18 @@ public:
     if (commandBuffer_ != VK_NULL_HANDLE) {
       vkFreeCommandBuffers(device_, commandPool_, 1, &commandBuffer_);
     }
+    for (auto& shader : shaderModules_) {
+      vkDestroyShaderModule(device_, shader, nullptr);
+    }
+    if (pipeline_ != VK_NULL_HANDLE) {
+      vkDestroyPipeline(device_, pipeline_, nullptr);
+    }
+    if (descriptorSetLayout_ != VK_NULL_HANDLE) {
+      vkDestroyDescriptorSetLayout(device_, descriptorSetLayout_, nullptr);
+    }
+    if (pipelineLayout_ != VK_NULL_HANDLE) {
+      vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr);
+    }
     if (descriptorPool_ != VK_NULL_HANDLE) {
       vkDestroyDescriptorPool(device_, descriptorPool_, nullptr);
     }
@@ -116,18 +128,18 @@ public:
       .pApplicationInfo = &appInfo
     };
 
-    // std::vector<const char*> layers;
-    // std::vector<const char*> extensions;
-    // if (gUseValidation)
-    // {
-    //   layers.push_back("VK_LAYER_KHRONOS_validation");
-    //   extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-    // }
+    std::vector<const char*> layers;
+    std::vector<const char*> extensions;
+    if (gUseValidation)
+    {
+      layers.push_back("VK_LAYER_KHRONOS_validation");
+      extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    }
 
-    // ci.enabledExtensionCount = uint32_t(extensions.size());
-    // ci.ppEnabledExtensionNames = extensions.data();
-    // ci.enabledLayerCount = uint32_t(layers.size());
-    // ci.ppEnabledLayerNames = layers.data();
+    ci.enabledExtensionCount = uint32_t(extensions.size());
+    ci.ppEnabledExtensionNames = extensions.data();
+    ci.enabledLayerCount = uint32_t(layers.size());
+    ci.ppEnabledLayerNames = layers.data();
     CHK(vkCreateInstance(&ci, nullptr, &instance_));
 
     uint32_t version = 0;
@@ -275,12 +287,14 @@ public:
     std::cout << "==== Create shader module & pipeline ====" << std::endl;
     std::vector<char> computeSpv;
     Load("build/shaders/shader.comp.spv", computeSpv);
+    VkShaderModule shader = createShaderModule(device_, computeSpv.data(), computeSpv.size());
     VkPipelineShaderStageCreateInfo computeStageCI {
       .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
       .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-      .module = createShaderModule(device_, computeSpv.data(), computeSpv.size()),
+      .module = shader,
       .pName = "main",
     };
+    shaderModules_.push_back(shader);
     VkComputePipelineCreateInfo computePipelineCI{
       .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
       .stage = computeStageCI,
@@ -391,6 +405,7 @@ private:
   VkCommandPool commandPool_;
   VkDescriptorPool descriptorPool_;
   VkCommandBuffer commandBuffer_;
+  std::vector<VkShaderModule> shaderModules_;
   std::unique_ptr<StagingBuffer> inputBuffer_;
   std::unique_ptr<DeviceBuffer> d_inputBuffer_;
   std::unique_ptr<StagingBuffer> outputBuffer_;
