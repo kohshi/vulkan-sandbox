@@ -197,18 +197,23 @@ public:
     vkGetPhysicalDeviceQueueFamilyProperties(physiscalDevice_, &count, nullptr);
     std::vector<VkQueueFamilyProperties> queueFamilyProps(count);
     vkGetPhysicalDeviceQueueFamilyProperties(physiscalDevice_, &count, queueFamilyProps.data());
-    uint32_t computeQueueIndex = 0;
+    uint32_t computeQueueFamilyIndex = 0;
+    uint32_t computeQueueCount = 0;
     for (uint32_t i = 0; i < count; ++i) {
       if (queueFamilyProps[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
-        computeQueueIndex = i;
+        computeQueueFamilyIndex = i;
+        computeQueueCount = queueFamilyProps[i].queueCount;
       }
     }
+
+    std::cout << "computeQueueFamilyIndex: " << computeQueueFamilyIndex << std::endl;
+    std::cout << "computeQueueCount: " << computeQueueCount << std::endl;
 
     std::cout << "==== Create device ====" << std::endl;
     const float queuePrioritory = 1.0f;
     VkDeviceQueueCreateInfo deviceQueueCI{
       .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-      .queueFamilyIndex = computeQueueIndex,
+      .queueFamilyIndex = computeQueueFamilyIndex,
       .queueCount = 1,
       .pQueuePriorities = &queuePrioritory,
     };
@@ -222,13 +227,13 @@ public:
 
     CHK(vkCreateDevice(physiscalDevice_, &deviceCI, nullptr, &device_));
 
-    vkGetDeviceQueue(device_, computeQueueIndex, 0, &computeQueue_);
+    vkGetDeviceQueue(device_, computeQueueFamilyIndex, 0/*queueIndex*/, &computeQueue_);
 
     std::cout << "==== Create command pool ====" << std::endl;
     VkCommandPoolCreateInfo commandPoolCI{
       .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
       .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-      .queueFamilyIndex = computeQueueIndex,
+      .queueFamilyIndex = computeQueueFamilyIndex,
     };
     CHK(vkCreateCommandPool(device_, &commandPoolCI, nullptr, &commandPool_));
 
@@ -439,7 +444,8 @@ public:
       .commandBufferCount = 1,
       .pCommandBuffers = &commandBuffer_,
     };
-    CHK(vkQueueSubmit(computeQueue_, 1, &VkSubmitInfo, VK_NULL_HANDLE));
+    // Submit the command buffer to the specified queue.
+    CHK(vkQueueSubmit(computeQueue_, 1/*submitCount*/, &VkSubmitInfo, VK_NULL_HANDLE/*fence*/));
     CHK(vkQueueWaitIdle(computeQueue_));
 
     for (uint32_t i = 0; i < numElements; ++i) {
