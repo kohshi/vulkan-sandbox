@@ -69,21 +69,11 @@ public:
   pipelineLayout_(VK_NULL_HANDLE),
   pipeline_(VK_NULL_HANDLE) {}
   ~Application() {
-    if (uniformBuffer_.get() != nullptr) {
-      uniformBuffer_.reset();
-    }
-    if (inputBuffer_.get() != nullptr) {
-      inputBuffer_.reset();
-    }
-    if (outputBuffer_.get() != nullptr) {
-      outputBuffer_.reset();
-    }
-    if (d_inputBuffer_.get() != nullptr) {
-      d_inputBuffer_.reset();
-    }
-    if (d_outputBuffer_.get() != nullptr) {
-      d_outputBuffer_.reset();
-    }
+    if (uniformBuffer_.get() != nullptr) { uniformBuffer_.reset(); }
+    if (inputBuffer_.get() != nullptr)   { inputBuffer_.reset(); }
+    if (outputBuffer_.get() != nullptr)  { outputBuffer_.reset(); }
+    if (d_inputBuffer_.get() != nullptr) { d_inputBuffer_.reset(); }
+    if (d_outputBuffer_.get() != nullptr) { d_outputBuffer_.reset(); }
     if (commandBuffer_ != VK_NULL_HANDLE) {
       vkFreeCommandBuffers(device_, commandPool_, 1, &commandBuffer_);
     }
@@ -288,8 +278,6 @@ void Application::initialize() {
 }
 
 void Application::run() {
-
-  initialize();
   
   std::cout << "==== Allocate buffer & memory ====" << std::endl;
   // Allocate uniform buffer
@@ -491,6 +479,7 @@ int main(int argc, const char * const argv[]) {
   (void)argv;
 
   Application app;
+  app.initialize();
   app.run();
   return 0;
 }
