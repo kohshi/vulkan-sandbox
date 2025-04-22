@@ -1,5 +1,6 @@
 #include "buffers.hpp"
 #include "semaphore.hpp"
+#include "kernel.hpp"
 #include "vulkan_utils.hpp"
 
 #include <vulkan/vulkan.h>
@@ -15,47 +16,6 @@
 
 bool gUseValidation = false;
 
-namespace {
-VkShaderModule createShaderModule(VkDevice device, const void* code, size_t length)
-{
-  VkShaderModuleCreateInfo ci{
-    .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-    .codeSize = length,
-    .pCode = reinterpret_cast<const uint32_t*>(code),
-  };
-  VkShaderModule shaderModule = VK_NULL_HANDLE;
-  CHK(vkCreateShaderModule(device, &ci, nullptr, &shaderModule));
-  return std::move(shaderModule);
-}
-
-bool Load(std::filesystem::path filePath, std::vector<char>& data) {
-  if (std::filesystem::exists(filePath))
-  {
-    std::ifstream infile(filePath, std::ios::binary);
-    if (infile)
-    {
-      auto size = infile.seekg(0, std::ios::end).tellg();
-      data.resize(size);
-      infile.seekg(0, std::ios::beg).read(data.data(), size);
-      return true;
-    }
-  }
-  filePath = std::filesystem::path("../") / filePath;
-  if (std::filesystem::exists(filePath))
-  {
-    std::ifstream infile(filePath, std::ios::binary);
-    if (infile)
-    {
-      auto size = infile.seekg(0, std::ios::end).tellg();
-      data.resize(size);
-      infile.seekg(0, std::ios::beg).read(data.data(), size);
-      return true;
-    }
-  }
-  return false;
-}
-}// namespace {
-
 class Application {
 public:
   Application() :
@@ -65,11 +25,10 @@ public:
   computeQueue_(VK_NULL_HANDLE),
   commandPool_(VK_NULL_HANDLE),
   descriptorPool_(VK_NULL_HANDLE),
-  commandBuffer_(VK_NULL_HANDLE),
-  descriptorSetLayout_(VK_NULL_HANDLE),
-  pipelineLayout_(VK_NULL_HANDLE),
-  pipeline_(VK_NULL_HANDLE) {}
+  commandBuffer_(VK_NULL_HANDLE) {}
   ~Application() {
+    if (computeShader_.get() != nullptr) { computeShader_.reset(); }
+    if (stream_.get() != nullptr) { stream_.reset(); }
     if (uniformBuffer_.get() != nullptr) { uniformBuffer_.reset(); }
     if (inputBuffer_.get() != nullptr)   { inputBuffer_.reset(); }
     if (outputBuffer_.get() != nullptr)  { outputBuffer_.reset(); }
@@ -80,15 +39,6 @@ public:
     }
     for (auto& shader : shaderModules_) {
       vkDestroyShaderModule(device_, shader, nullptr);
-    }
-    if (pipeline_ != VK_NULL_HANDLE) {
-      vkDestroyPipeline(device_, pipeline_, nullptr);
-    }
-    if (descriptorSetLayout_ != VK_NULL_HANDLE) {
-      vkDestroyDescriptorSetLayout(device_, descriptorSetLayout_, nullptr);
-    }
-    if (pipelineLayout_ != VK_NULL_HANDLE) {
-      vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr);
     }
     if (descriptorPool_ != VK_NULL_HANDLE) {
       vkDestroyDescriptorPool(device_, descriptorPool_, nullptr);
@@ -127,9 +77,7 @@ private:
   std::unique_ptr<DeviceBuffer> d_inputBuffer_;
   std::unique_ptr<StagingBuffer> outputBuffer_;
   std::unique_ptr<DeviceBuffer> d_outputBuffer_;
-  VkDescriptorSetLayout descriptorSetLayout_;
-  VkPipelineLayout pipelineLayout_;
-  VkPipeline pipeline_;
+  std::unique_ptr<vk::ComputeShader> computeShader_;
   std::vector<VkDescriptorSet> descriptorSets_;
 };
 
@@ -279,6 +227,12 @@ void Application::initialize() {
     .pPoolSizes = poolSizes.data(),
   };
   CHK(vkCreateDescriptorPool(device_, &descriptorPoolCI, nullptr, &descriptorPool_));
+
+  std::cout << "==== Create compute shader ====" << std::endl;
+  computeShader_.reset(new vk::ComputeShader(
+    device_,
+    descriptorPool_,
+    "build/shaders/shader.comp.spv"));
 }
 
 void Application::run() {
@@ -315,116 +269,15 @@ void Application::run() {
     reinterpret_cast<int32_t*>(inputBuffer_->mapped_)[i] = i;
   }
 
-  std::cout << "==== Create descriptor set layout & pipeline layout ====" << std::endl;
-  std::vector<VkDescriptorSetLayoutBinding> layoutBindings{
-    {// uniform buffer
-      .binding = 0,
-      .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-      .descriptorCount = 1,
-      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-    },
-    {// input buffer
-      .binding = 1,
-      .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-      .descriptorCount = 1,
-      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-    },
-    {// output buffer
-      .binding = 2,
-      .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-      .descriptorCount = 1,
-      .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-    },
-  };
-  VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{
-    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-    .bindingCount = uint32_t(layoutBindings.size()),
-    .pBindings = layoutBindings.data(),
-  };
-  CHK(vkCreateDescriptorSetLayout(device_, &descriptorSetLayoutCI, nullptr, &descriptorSetLayout_));
-
-  VkPipelineLayoutCreateInfo pipelineLayoutCI{
-    .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-    .setLayoutCount = 1,
-    .pSetLayouts = &descriptorSetLayout_,
-  };
-  CHK(vkCreatePipelineLayout(device_, &pipelineLayoutCI, nullptr, &pipelineLayout_));
-
-  std::cout << "==== Create shader module & pipeline ====" << std::endl;
-  std::vector<char> computeSpv;
-  Load("build/shaders/shader.comp.spv", computeSpv);
-  VkShaderModule shader = createShaderModule(device_, computeSpv.data(), computeSpv.size());
-  VkPipelineShaderStageCreateInfo computeStageCI {
-    .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-    .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-    .module = shader,
-    .pName = "main",
-  };
-  shaderModules_.push_back(shader);
-  VkComputePipelineCreateInfo computePipelineCI{
-    .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-    .stage = computeStageCI,
-    .layout = pipelineLayout_,
-  };
-  CHK(vkCreateComputePipelines(device_, VK_NULL_HANDLE, 1, &computePipelineCI, nullptr, &pipeline_));
-
-  std::cout << "==== Allocate descriptor set ====" << std::endl;
-  std::vector<VkDescriptorSetLayout> dsLayouts{ descriptorSetLayout_ };
-  VkDescriptorSetAllocateInfo dsAllocInfoComp = {
-    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-    .descriptorPool = descriptorPool_,
-    .descriptorSetCount = uint32_t(dsLayouts.size()),
-    .pSetLayouts = dsLayouts.data(),
+  std::vector<std::tuple<VkDescriptorType, VkBuffer>> descriptorTypes{
+    {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uniformBuffer_->buffer_},
+    {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, d_inputBuffer_->buffer_},
+    {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, d_outputBuffer_->buffer_},
   };
 
-  descriptorSets_.resize(dsLayouts.size());
-  CHK(vkAllocateDescriptorSets(device_, &dsAllocInfoComp, descriptorSets_.data()));
-
-  VkDescriptorBufferInfo uniformBufferInfo{
-    .buffer = uniformBuffer_->buffer_,
-    .offset = 0,
-    .range = VK_WHOLE_SIZE,
-  };
-  VkDescriptorBufferInfo inputBufferInfo{
-    .buffer = d_inputBuffer_->buffer_,
-    .offset = 0,
-    .range = VK_WHOLE_SIZE,
-  };
-  VkDescriptorBufferInfo outputBufferInfo{
-    .buffer = d_outputBuffer_->buffer_,
-    .offset = 0,
-    .range = VK_WHOLE_SIZE,
-  };
-  std::vector<VkWriteDescriptorSet> writeDescriptorSets{
-    {
-      .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-      .dstSet = descriptorSets_[0],
-      .dstBinding = 0,
-      .descriptorCount = 1,
-      .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-      .pBufferInfo = &uniformBufferInfo
-    },
-    {// input buffer
-      .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-      .dstSet = descriptorSets_[0],
-      .dstBinding = 1,
-      .descriptorCount = 1,
-      .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-      .pBufferInfo = &inputBufferInfo,
-    },
-    {// output buffer
-      .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-      .dstSet = descriptorSets_[0],
-      .dstBinding = 2,
-      .descriptorCount = 1,
-      .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-      .pBufferInfo = &outputBufferInfo,
-    },
-  };
-  vkUpdateDescriptorSets(device_, uint32_t(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
+  computeShader_->bind(descriptorTypes);
 
   std::cout << "==== Create command buffer ====" << std::endl;
-
   VkCommandBufferAllocateInfo commandAI{
     .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
     .commandPool = commandPool_,
@@ -449,8 +302,15 @@ void Application::run() {
   };
   vkCmdCopyBuffer(commandBuffer_, inputBuffer_->buffer_, d_inputBuffer_->buffer_, 1, &copyRegion);
 
-  vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_);
-  vkCmdBindDescriptorSets(commandBuffer_, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout_, 0, 1, &descriptorSets_[0], 0, nullptr);
+  vk::ComputeShader& cs = *computeShader_;
+  vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_COMPUTE, cs.pipeline_);
+  vkCmdBindDescriptorSets(commandBuffer_,
+    VK_PIPELINE_BIND_POINT_COMPUTE,
+    cs.pipelineLayout_,
+    0 /*firstSet*/, 1/*descriptorSetCount*/,
+    &(cs.descriptorSets_[0]),
+    0/*DynamicOffsetCount*/,
+    nullptr);
   // group count x,y,z
   vkCmdDispatch(commandBuffer_, numElements / 32, 1, 1);
 
