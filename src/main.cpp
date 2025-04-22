@@ -1,4 +1,5 @@
 #include "buffers.hpp"
+#include "semaphore.hpp"
 #include "vulkan_utils.hpp"
 
 #include <vulkan/vulkan.h>
@@ -119,6 +120,7 @@ private:
   VkDescriptorPool descriptorPool_;
   VkCommandBuffer commandBuffer_;
   std::vector<VkShaderModule> shaderModules_;
+  std::unique_ptr<vk::Stream> stream_;
 
   std::unique_ptr<UniformBuffer> uniformBuffer_;
   std::unique_ptr<StagingBuffer> inputBuffer_;
@@ -244,6 +246,8 @@ void Application::initialize() {
   CHK(vkCreateDevice(physiscalDevice_, &deviceCI, nullptr, &device_));
 
   vkGetDeviceQueue(device_, computeQueueFamilyIndex, 0/*queueIndex*/, &computeQueue_);
+
+  stream_.reset(new vk::Stream(device_, computeQueue_));
 
   std::cout << "==== Create command pool ====" << std::endl;
   VkCommandPoolCreateInfo commandPoolCI{
@@ -453,14 +457,8 @@ void Application::run() {
   vkCmdCopyBuffer(commandBuffer_, d_outputBuffer_->buffer_, outputBuffer_->buffer_, 1, &copyRegion);
   CHK(vkEndCommandBuffer(commandBuffer_));
 
-  VkSubmitInfo VkSubmitInfo = {
-    .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-    .commandBufferCount = 1,
-    .pCommandBuffers = &commandBuffer_,
-  };
-  // Submit the command buffer to the specified queue.
-  CHK(vkQueueSubmit(computeQueue_, 1/*submitCount*/, &VkSubmitInfo, VK_NULL_HANDLE/*fence*/));
-  CHK(vkQueueWaitIdle(computeQueue_));
+  stream_->submit(commandBuffer_);
+  stream_->synchronize();
 
   for (uint32_t i = 0; i < numElements; ++i) {
     std::cout << reinterpret_cast<int32_t*>(inputBuffer_->mapped_)[i] << " ";
