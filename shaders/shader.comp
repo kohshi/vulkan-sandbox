@@ -1,5 +1,5 @@
 #version 450
-//#extension GL_EXT_debug_printf : true
+// #extension GL_EXT_debug_printf : enable
 
 layout(local_size_x = 32, local_size_y = 1) in;
 
@@ -19,6 +19,8 @@ void main() {
 	}
 	const uint id = gl_GlobalInvocationID.x; // current offset
 
-	//debugPrintfEXT("id %u: grid %u, %u, %u\n", id, grid_x, grid_y, grid_z);
+	// if (id == 31) {
+	// 	debugPrintfEXT("id %u: grid %u, %u, %u = %d\n", id, grid_x, grid_y, grid_z, inbuf[id]);
+	// }
 	outbuf[id] = inbuf[id] * inbuf[id];
 }

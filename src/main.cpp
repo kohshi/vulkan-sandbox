@@ -9,6 +9,7 @@
 #include <iostream>
 #include <filesystem>
 #include <fstream>
+#include <cstring>
 
 // #define VOLK_IMPLEMENTATION
 // #include "volk/volk.h"
@@ -27,7 +28,9 @@ public:
   descriptorPool_(VK_NULL_HANDLE),
   commandBuffer_(VK_NULL_HANDLE) {}
   ~Application() {
-    if (computeShader_.get() != nullptr) { computeShader_.reset(); }
+    for (auto& shader : computeShaders_) {
+      if (shader.get() != nullptr) { shader.reset(); }
+    }
     if (stream_.get() != nullptr) { stream_.reset(); }
     if (uniformBuffer_.get() != nullptr) { uniformBuffer_.reset(); }
     if (inputBuffer_.get() != nullptr)   { inputBuffer_.reset(); }
@@ -77,8 +80,10 @@ private:
   std::unique_ptr<DeviceBuffer> d_inputBuffer_;
   std::unique_ptr<StagingBuffer> outputBuffer_;
   std::unique_ptr<DeviceBuffer> d_outputBuffer_;
-  std::unique_ptr<vk::ComputeShader> computeShader_;
+  std::vector<std::unique_ptr<vk::ComputeShader>> computeShaders_;
   std::vector<VkDescriptorSet> descriptorSets_;
+
+  // PFN_vkCmdPipelineBarrier2KHR vkCmdPipelineBarrier2KHR_;
 };
 
 
@@ -107,19 +112,19 @@ void Application::initialize() {
   std::vector<VkValidationFeatureEnableEXT>  validationFeatEnables = {
     VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT
   };
+  // extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
   if (gUseValidation)
   {
     layers.push_back("VK_LAYER_KHRONOS_validation");
     // extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     validationFeatures.enabledValidationFeatureCount = validationFeatEnables.size();
     validationFeatures.pEnabledValidationFeatures = validationFeatEnables.data();
-
-    ci.enabledExtensionCount = uint32_t(extensions.size());
-    ci.ppEnabledExtensionNames = extensions.data();
-    ci.enabledLayerCount = uint32_t(layers.size());
-    ci.ppEnabledLayerNames = layers.data();
     ci.pNext = &validationFeatures;
   }
+  ci.enabledLayerCount = uint32_t(layers.size());
+  ci.ppEnabledLayerNames = layers.data();
+  ci.enabledExtensionCount = uint32_t(extensions.size());
+  ci.ppEnabledExtensionNames = extensions.data();
 
   CHK(vkCreateInstance(&ci, nullptr, &instance_));
 
@@ -171,9 +176,24 @@ void Application::initialize() {
       computeQueueCount = queueFamilyProps[i].queueCount;
     }
   }
-
   std::cout << "computeQueueFamilyIndex: " << computeQueueFamilyIndex << std::endl;
   std::cout << "computeQueueCount: " << computeQueueCount << std::endl;
+
+  // Get supported extnsions
+  uint32_t extensionCount = 0;
+  vkEnumerateDeviceExtensionProperties(physiscalDevice_, nullptr, &extensionCount, nullptr);
+  std::vector<VkExtensionProperties> supportedExts(extensionCount);
+  vkEnumerateDeviceExtensionProperties(physiscalDevice_, nullptr, &extensionCount, supportedExts.data());
+
+  bool sync2Supported = false;
+  for (const auto& ext : supportedExts) {
+      if (std::strcmp(ext.extensionName, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) == 0) {
+          sync2Supported = true;
+          break;
+      }
+  }
+  std::cout << "==== Supported extensions ====" << std::endl;
+  std::cout << "VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME: " << sync2Supported << std::endl;
 
   std::cout << "==== Create device ====" << std::endl;
   const float queuePrioritory = 1.0f;
@@ -196,6 +216,9 @@ void Application::initialize() {
   vkGetDeviceQueue(device_, computeQueueFamilyIndex, 0/*queueIndex*/, &computeQueue_);
 
   stream_.reset(new vk::Stream(device_, computeQueue_));
+
+  // vkCmdPipelineBarrier2KHR_ = reinterpret_cast<PFN_vkCmdPipelineBarrier2KHR>(
+  //   vkGetDeviceProcAddr(device_, "vkCmdPipelineBarrier2KHR"));
 
   std::cout << "==== Create command pool ====" << std::endl;
   VkCommandPoolCreateInfo commandPoolCI{
@@ -229,10 +252,12 @@ void Application::initialize() {
   CHK(vkCreateDescriptorPool(device_, &descriptorPoolCI, nullptr, &descriptorPool_));
 
   std::cout << "==== Create compute shader ====" << std::endl;
-  computeShader_.reset(new vk::ComputeShader(
-    device_,
-    descriptorPool_,
-    "build/shaders/shader.comp.spv"));
+  for (size_t i = 0; i < 2; ++i) {
+    computeShaders_.push_back(std::make_unique<vk::ComputeShader>(
+      device_,
+      descriptorPool_,
+      "build/shaders/shader.comp.spv"));
+  }
 }
 
 void Application::run() {
@@ -269,14 +294,6 @@ void Application::run() {
     reinterpret_cast<int32_t*>(inputBuffer_->mapped_)[i] = i;
   }
 
-  std::vector<std::tuple<VkDescriptorType, VkBuffer>> descriptorTypes{
-    {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uniformBuffer_->buffer_},
-    {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, d_inputBuffer_->buffer_},
-    {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, d_outputBuffer_->buffer_},
-  };
-
-  computeShader_->bind(descriptorTypes);
-
   std::cout << "==== Create command buffer ====" << std::endl;
   VkCommandBufferAllocateInfo commandAI{
     .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -287,34 +304,73 @@ void Application::run() {
   CHK(vkAllocateCommandBuffers(device_, &commandAI, &commandBuffer_));
 
   std::cout << "==== Begin command buffer ====" << std::endl;
-
   VkCommandBufferBeginInfo commandBufferBeginInfo{
     .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
     .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
   };
   CHK(vkBeginCommandBuffer(commandBuffer_, &commandBufferBeginInfo));
 
-  // Copy input buffer to device local buffer
-  VkBufferCopy copyRegion{
-    .srcOffset = 0,
-    .dstOffset = 0,
-    .size = memorySize,
-  };
-  vkCmdCopyBuffer(commandBuffer_, inputBuffer_->buffer_, d_inputBuffer_->buffer_, 1, &copyRegion);
+  for (size_t i = 0; i < computeShaders_.size(); ++i) {
+    std::cout << "==== Dispatch compute shader ====" << i << std::endl;
+    auto& cs = computeShaders_[i];
+    std::vector<std::tuple<VkDescriptorType, VkBuffer>> descriptorTypes{
+      {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uniformBuffer_->buffer_},
+      {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, d_inputBuffer_->buffer_},
+      {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, d_outputBuffer_->buffer_},
+    };
 
-  vk::ComputeShader& cs = *computeShader_;
-  vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_COMPUTE, cs.pipeline_);
-  vkCmdBindDescriptorSets(commandBuffer_,
-    VK_PIPELINE_BIND_POINT_COMPUTE,
-    cs.pipelineLayout_,
-    0 /*firstSet*/, 1/*descriptorSetCount*/,
-    &(cs.descriptorSets_[0]),
-    0/*DynamicOffsetCount*/,
-    nullptr);
-  // group count x,y,z
-  vkCmdDispatch(commandBuffer_, numElements / 32, 1, 1);
+    cs->bind(descriptorTypes);
 
-  vkCmdCopyBuffer(commandBuffer_, d_outputBuffer_->buffer_, outputBuffer_->buffer_, 1, &copyRegion);
+    // Copy input buffer to device local buffer
+    if (i == 0) {
+      std::cout << "==== H2D ====" << std::endl;
+      VkBufferCopy copyRegion{
+        .srcOffset = 0,
+        .dstOffset = 0,
+        .size = memorySize,
+      };
+      vkCmdCopyBuffer(commandBuffer_, inputBuffer_->buffer_, d_inputBuffer_->buffer_, 1, &copyRegion);
+    }
+
+    vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_COMPUTE, cs->pipeline_);
+    vkCmdBindDescriptorSets(commandBuffer_,
+      VK_PIPELINE_BIND_POINT_COMPUTE,
+      cs->pipelineLayout_,
+      0 /*firstSet*/, 1/*descriptorSetCount*/,
+      &(cs->descriptorSets_[0]),
+      0/*DynamicOffsetCount*/,
+      nullptr);
+    // group count x,y,z
+    vkCmdDispatch(commandBuffer_, numElements / 32, 1, 1);
+
+    VkMemoryBarrier memoryBarrier{
+      .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+      .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+      .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+    };
+    vkCmdPipelineBarrier(
+      commandBuffer_,
+      VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, //srcStageMask
+      VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, //dstStageMask
+      0, //dependencyFlags
+      1/*memoryBarrierCount*/, &memoryBarrier, //pMemoryBarriers
+      0/*bufferMemoryBarrierCount*/, nullptr, // pBufferMemoryBarriers
+      0/*imageMemoryBarrierCount*/, nullptr);// pImageMemoryBarriers
+
+    if (i == computeShaders_.size() - 1) {
+      std::cout << "==== D2H ====" << std::endl;
+      VkBufferCopy copyRegion{
+        .srcOffset = 0,
+        .dstOffset = 0,
+        .size = memorySize,
+      };
+      vkCmdCopyBuffer(commandBuffer_, d_outputBuffer_->buffer_, outputBuffer_->buffer_, 1, &copyRegion);
+    }
+    else {
+      // Swap input and output buffers
+      std::swap(d_inputBuffer_, d_outputBuffer_);
+    }
+  }
   CHK(vkEndCommandBuffer(commandBuffer_));
 
   stream_->submit(commandBuffer_);
