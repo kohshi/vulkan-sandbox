@@ -83,7 +83,8 @@ private:
   std::vector<std::unique_ptr<vk::ComputeShader>> computeShaders_;
   std::vector<VkDescriptorSet> descriptorSets_;
 
-  // PFN_vkCmdPipelineBarrier2KHR vkCmdPipelineBarrier2KHR_;
+  bool sync2Supported_ = false;
+  PFN_vkCmdPipelineBarrier2KHR vkCmdPipelineBarrier2KHR_;
 };
 
 
@@ -112,18 +113,17 @@ void Application::initialize() {
   std::vector<VkValidationFeatureEnableEXT>  validationFeatEnables = {
     VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT
   };
-  // extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+  layers.push_back("VK_LAYER_KHRONOS_synchronization2");
   if (gUseValidation)
   {
     layers.push_back("VK_LAYER_KHRONOS_validation");
-    // extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     validationFeatures.enabledValidationFeatureCount = validationFeatEnables.size();
     validationFeatures.pEnabledValidationFeatures = validationFeatEnables.data();
     ci.pNext = &validationFeatures;
   }
-  ci.enabledLayerCount = uint32_t(layers.size());
+  ci.enabledLayerCount = static_cast<uint32_t>(layers.size());
   ci.ppEnabledLayerNames = layers.data();
-  ci.enabledExtensionCount = uint32_t(extensions.size());
+  ci.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
   ci.ppEnabledExtensionNames = extensions.data();
 
   CHK(vkCreateInstance(&ci, nullptr, &instance_));
@@ -185,15 +185,18 @@ void Application::initialize() {
   std::vector<VkExtensionProperties> supportedExts(extensionCount);
   vkEnumerateDeviceExtensionProperties(physiscalDevice_, nullptr, &extensionCount, supportedExts.data());
 
-  bool sync2Supported = false;
+  sync2Supported_ = false;
   for (const auto& ext : supportedExts) {
       if (std::strcmp(ext.extensionName, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) == 0) {
-          sync2Supported = true;
+        sync2Supported_ = true;
           break;
       }
   }
   std::cout << "==== Supported extensions ====" << std::endl;
-  std::cout << "VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME: " << sync2Supported << std::endl;
+  std::cout << "VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME: " << sync2Supported_ << std::endl;
+  if (sync2Supported_) {
+    extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+  }
 
   std::cout << "==== Create device ====" << std::endl;
   const float queuePrioritory = 1.0f;
@@ -203,22 +206,28 @@ void Application::initialize() {
     .queueCount = 1,
     .pQueuePriorities = &queuePrioritory,
   };
+  VkPhysicalDeviceSynchronization2FeaturesKHR sync2Features{
+    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR,
+    .synchronization2 = VK_TRUE,
+  };
   VkDeviceCreateInfo deviceCI{
     .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+    .pNext = sync2Supported_ ? &sync2Features : nullptr,
     .queueCreateInfoCount = 1,
     .pQueueCreateInfos = &deviceQueueCI,
-    .enabledExtensionCount = 0,
-    .ppEnabledExtensionNames = 0,
+    .enabledExtensionCount = static_cast<uint32_t>(extensions.size()),
+    .ppEnabledExtensionNames = extensions.data(),
   };
 
   CHK(vkCreateDevice(physiscalDevice_, &deviceCI, nullptr, &device_));
+  // Get process addresses
+  vkCmdPipelineBarrier2KHR_ = reinterpret_cast<PFN_vkCmdPipelineBarrier2KHR>(
+    vkGetDeviceProcAddr(device_, "vkCmdPipelineBarrier2KHR"));
 
   vkGetDeviceQueue(device_, computeQueueFamilyIndex, 0/*queueIndex*/, &computeQueue_);
 
   stream_.reset(new vk::Stream(device_, computeQueue_));
 
-  // vkCmdPipelineBarrier2KHR_ = reinterpret_cast<PFN_vkCmdPipelineBarrier2KHR>(
-  //   vkGetDeviceProcAddr(device_, "vkCmdPipelineBarrier2KHR"));
 
   std::cout << "==== Create command pool ====" << std::endl;
   VkCommandPoolCreateInfo commandPoolCI{
@@ -311,7 +320,7 @@ void Application::run() {
   CHK(vkBeginCommandBuffer(commandBuffer_, &commandBufferBeginInfo));
 
   for (size_t i = 0; i < computeShaders_.size(); ++i) {
-    std::cout << "==== Dispatch compute shader ====" << i << std::endl;
+    std::cout << "==== Dispatch compute shader[" << i << "] ====" << std::endl;
     auto& cs = computeShaders_[i];
     std::vector<std::tuple<VkDescriptorType, VkBuffer>> descriptorTypes{
       {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uniformBuffer_->buffer_},
@@ -343,19 +352,39 @@ void Application::run() {
     // group count x,y,z
     vkCmdDispatch(commandBuffer_, numElements / 32, 1, 1);
 
-    VkMemoryBarrier memoryBarrier{
-      .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
-      .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
-      .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
-    };
-    vkCmdPipelineBarrier(
-      commandBuffer_,
-      VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, //srcStageMask
-      VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, //dstStageMask
-      0, //dependencyFlags
-      1/*memoryBarrierCount*/, &memoryBarrier, //pMemoryBarriers
-      0/*bufferMemoryBarrierCount*/, nullptr, // pBufferMemoryBarriers
-      0/*imageMemoryBarrierCount*/, nullptr);// pImageMemoryBarriers
+    if (sync2Supported_) {
+      VkMemoryBarrier2KHR memoryBarrier {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2_KHR,
+        .srcStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+        .dstStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+      };
+      VkDependencyInfoKHR dependencyInfo{
+        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO_KHR,
+        .memoryBarrierCount = 1,
+        .pMemoryBarriers = &memoryBarrier,
+        .bufferMemoryBarrierCount = 0,
+        .pBufferMemoryBarriers = nullptr,
+        .imageMemoryBarrierCount = 0,
+        .pImageMemoryBarriers = nullptr,
+      };
+      vkCmdPipelineBarrier2KHR_(commandBuffer_, &dependencyInfo);
+    } else {
+      VkMemoryBarrier memoryBarrier{
+        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+      };
+      vkCmdPipelineBarrier(
+        commandBuffer_,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, //srcStageMask
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, //dstStageMask
+        0, //dependencyFlags
+        1/*memoryBarrierCount*/, &memoryBarrier, //pMemoryBarriers
+        0/*bufferMemoryBarrierCount*/, nullptr, // pBufferMemoryBarriers
+        0/*imageMemoryBarrierCount*/, nullptr);// pImageMemoryBarriers
+    }
 
     if (i == computeShaders_.size() - 1) {
       std::cout << "==== D2H ====" << std::endl;
