@@ -98,21 +98,12 @@ void Application::initialize() {
 
     std::vector<const char*> layers;
     std::vector<const char*> extensions;
-    VkValidationFeaturesEXT validation_features = {
-      .sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
-      .enabledValidationFeatureCount = 0,
-      .pEnabledValidationFeatures = nullptr,
-    };
-    std::vector<VkValidationFeatureEnableEXT>  validation_feat_enables = {
-      VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT
-    };
+    
     layers.push_back("VK_LAYER_KHRONOS_synchronization2");
     if (gUseValidation)
     {
       layers.push_back("VK_LAYER_KHRONOS_validation");
-      validation_features.enabledValidationFeatureCount = validation_feat_enables.size();
-      validation_features.pEnabledValidationFeatures = validation_feat_enables.data();
-      instance_ci.pNext = &validation_features;
+      extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);  
     }
     instance_ci.enabledLayerCount = static_cast<uint32_t>(layers.size());
     instance_ci.ppEnabledLayerNames = layers.data();
@@ -197,16 +188,20 @@ void Application::initialize() {
     if (synchronization2_supported_) {
       extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
     }
+    if (gUseValidation) {
+      extensions.push_back(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME);
+    }
     const float queue_priorities = 1.0f;
+    VkPhysicalDeviceSynchronization2FeaturesKHR sync2_features{
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR,
+      .synchronization2 = VK_TRUE,
+    };
+
     VkDeviceQueueCreateInfo device_queue_ci{
       .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
       .queueFamilyIndex = compute_queue_family_index,
       .queueCount = 1,
       .pQueuePriorities = &queue_priorities,
-    };
-    VkPhysicalDeviceSynchronization2FeaturesKHR sync2_features{
-      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR,
-      .synchronization2 = VK_TRUE,
     };
     VkDeviceCreateInfo device_ci{
       .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
