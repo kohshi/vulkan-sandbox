@@ -25,8 +25,7 @@ public:
   device_(VK_NULL_HANDLE),
   computeQueue_(VK_NULL_HANDLE),
   commandPool_(VK_NULL_HANDLE),
-  descriptorPool_(VK_NULL_HANDLE),
-  commandBuffer_(VK_NULL_HANDLE) {}
+  descriptorPool_(VK_NULL_HANDLE) {}
   ~Application() {
     for (auto& shader : computeShaders_) {
       if (shader.get() != nullptr) { shader.reset(); }
@@ -37,9 +36,6 @@ public:
     if (outputBuffer_.get() != nullptr)  { outputBuffer_.reset(); }
     if (d_inputBuffer_.get() != nullptr) { d_inputBuffer_.reset(); }
     if (d_outputBuffer_.get() != nullptr) { d_outputBuffer_.reset(); }
-    if (commandBuffer_ != VK_NULL_HANDLE) {
-      vkFreeCommandBuffers(device_, commandPool_, 1, &commandBuffer_);
-    }
     for (auto& shader : shaderModules_) {
       vkDestroyShaderModule(device_, shader, nullptr);
     }
@@ -71,7 +67,6 @@ private:
   VkQueue computeQueue_;
   VkCommandPool commandPool_;
   VkDescriptorPool descriptorPool_;
-  VkCommandBuffer commandBuffer_;
   std::vector<VkShaderModule> shaderModules_;
   std::unique_ptr<vk::Stream> stream_;
 
@@ -226,9 +221,6 @@ void Application::initialize() {
 
   vkGetDeviceQueue(device_, computeQueueFamilyIndex, 0/*queueIndex*/, &computeQueue_);
 
-  stream_.reset(new vk::Stream(device_, computeQueue_));
-
-
   std::cout << "==== Create command pool ====" << std::endl;
   VkCommandPoolCreateInfo commandPoolCI{
     .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -267,6 +259,8 @@ void Application::initialize() {
       descriptorPool_,
       "build/shaders/shader.comp.spv"));
   }
+
+  stream_.reset(new vk::Stream(device_, computeQueue_, commandPool_));
 }
 
 void Application::run() {
@@ -303,23 +297,14 @@ void Application::run() {
     reinterpret_cast<int32_t*>(inputBuffer_->mapped_)[i] = i;
   }
 
-  std::cout << "==== Create command buffer ====" << std::endl;
-  VkCommandBufferAllocateInfo commandAI{
-    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-    .commandPool = commandPool_,
-    .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-    .commandBufferCount = 1,
-  };
-  CHK(vkAllocateCommandBuffers(device_, &commandAI, &commandBuffer_));
-
-  std::cout << "==== Begin command buffer ====" << std::endl;
-  VkCommandBufferBeginInfo commandBufferBeginInfo{
-    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-    .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-  };
-  CHK(vkBeginCommandBuffer(commandBuffer_, &commandBufferBeginInfo));
-
+  stream_->begin();
   for (size_t i = 0; i < computeShaders_.size(); ++i) {
+    // Copy input buffer to device local buffer
+    if (i == 0) {
+      std::cout << "==== H2D ====" << std::endl;
+      stream_->copy(inputBuffer_->buffer_, d_inputBuffer_->buffer_, memorySize);
+    }
+
     std::cout << "==== Dispatch compute shader[" << i << "] ====" << std::endl;
     auto& cs = computeShaders_[i];
     std::vector<std::tuple<VkDescriptorType, VkBuffer>> descriptorTypes{
@@ -327,82 +312,21 @@ void Application::run() {
       {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, d_inputBuffer_->buffer_},
       {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, d_outputBuffer_->buffer_},
     };
-
     cs->bind(descriptorTypes);
-
-    // Copy input buffer to device local buffer
-    if (i == 0) {
-      std::cout << "==== H2D ====" << std::endl;
-      VkBufferCopy copyRegion{
-        .srcOffset = 0,
-        .dstOffset = 0,
-        .size = memorySize,
-      };
-      vkCmdCopyBuffer(commandBuffer_, inputBuffer_->buffer_, d_inputBuffer_->buffer_, 1, &copyRegion);
-    }
-
-    vkCmdBindPipeline(commandBuffer_, VK_PIPELINE_BIND_POINT_COMPUTE, cs->pipeline_);
-    vkCmdBindDescriptorSets(commandBuffer_,
-      VK_PIPELINE_BIND_POINT_COMPUTE,
-      cs->pipelineLayout_,
-      0 /*firstSet*/, 1/*descriptorSetCount*/,
-      &(cs->descriptorSets_[0]),
-      0/*DynamicOffsetCount*/,
-      nullptr);
-    // group count x,y,z
-    vkCmdDispatch(commandBuffer_, numElements / 32, 1, 1);
-
-    if (sync2Supported_) {
-      VkMemoryBarrier2KHR memoryBarrier {
-        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2_KHR,
-        .srcStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
-        .dstStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
-      };
-      VkDependencyInfoKHR dependencyInfo{
-        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO_KHR,
-        .memoryBarrierCount = 1,
-        .pMemoryBarriers = &memoryBarrier,
-        .bufferMemoryBarrierCount = 0,
-        .pBufferMemoryBarriers = nullptr,
-        .imageMemoryBarrierCount = 0,
-        .pImageMemoryBarriers = nullptr,
-      };
-      vkCmdPipelineBarrier2KHR_(commandBuffer_, &dependencyInfo);
-    } else {
-      VkMemoryBarrier memoryBarrier{
-        .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
-        .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
-        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
-      };
-      vkCmdPipelineBarrier(
-        commandBuffer_,
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, //srcStageMask
-        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, //dstStageMask
-        0, //dependencyFlags
-        1/*memoryBarrierCount*/, &memoryBarrier, //pMemoryBarriers
-        0/*bufferMemoryBarrierCount*/, nullptr, // pBufferMemoryBarriers
-        0/*imageMemoryBarrierCount*/, nullptr);// pImageMemoryBarriers
-    }
+    stream_->dispatch(*cs, numElements / 32, 1, 1);
+    stream_->barrier();
 
     if (i == computeShaders_.size() - 1) {
       std::cout << "==== D2H ====" << std::endl;
-      VkBufferCopy copyRegion{
-        .srcOffset = 0,
-        .dstOffset = 0,
-        .size = memorySize,
-      };
-      vkCmdCopyBuffer(commandBuffer_, d_outputBuffer_->buffer_, outputBuffer_->buffer_, 1, &copyRegion);
+      stream_->copy(d_outputBuffer_->buffer_, outputBuffer_->buffer_, memorySize);
     }
     else {
       // Swap input and output buffers
       std::swap(d_inputBuffer_, d_outputBuffer_);
     }
   }
-  CHK(vkEndCommandBuffer(commandBuffer_));
 
-  stream_->submit(commandBuffer_);
+  stream_->submit();
   stream_->synchronize();
 
   for (uint32_t i = 0; i < numElements; ++i) {

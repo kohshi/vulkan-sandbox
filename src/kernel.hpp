@@ -147,7 +147,6 @@ void ComputeShader::bind(std::vector<std::tuple<VkDescriptorType, VkBuffer>>& ar
   CHK(vkCreateComputePipelines(device_, VK_NULL_HANDLE, 1, &computePipelineCI, nullptr, &pipeline_));
 
   // Update DescriptorSet
-  std::cout << "==== Allocate descriptor set ====" << std::endl;
   std::vector<VkDescriptorSetLayout> dsLayouts{descriptorSetLayout_};
   VkDescriptorSetAllocateInfo dsAllocInfoComp = {
     .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -159,7 +158,6 @@ void ComputeShader::bind(std::vector<std::tuple<VkDescriptorType, VkBuffer>>& ar
   descriptorSets_.resize(dsLayouts.size());
   CHK(vkAllocateDescriptorSets(device_, &dsAllocInfoComp, descriptorSets_.data()));
 
-  std::cout << "==== Update descriptor set ====" << std::endl;
   std::vector<VkDescriptorBufferInfo> bufferInfos;
   std::vector<VkWriteDescriptorSet> writeDescriptorSets;
   bufferInfos.reserve(argTypes.size());
