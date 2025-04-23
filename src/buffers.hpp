@@ -5,54 +5,54 @@
 
 namespace {
 uint32_t findMemoryType(const VkPhysicalDeviceMemoryProperties& props,
-    const uint32_t memoryTypeBits,
+    const uint32_t memory_types_bits,
     const VkMemoryPropertyFlags flags)
 {
-  uint32_t memoryTypeIndex = VK_MAX_MEMORY_TYPES;
+  uint32_t memory_types_index = VK_MAX_MEMORY_TYPES;
   for (uint32_t i = 0; i < props.memoryTypeCount; ++i) {
-    if (memoryTypeBits & (1 << i)) {
+    if (memory_types_bits & (1 << i)) {
       // Check if the memory type is suitable
       if ((props.memoryTypes[i].propertyFlags & flags) == flags) {
-        memoryTypeIndex = i;
+        memory_types_index = i;
         break;
       }
     }
   }
   // Check if memory type is found
-  CHK(((memoryTypeIndex == VK_MAX_MEMORY_TYPES) ? VK_ERROR_OUT_OF_HOST_MEMORY : VK_SUCCESS));
-  return memoryTypeIndex;
+  CHK(((memory_types_index == VK_MAX_MEMORY_TYPES) ? VK_ERROR_OUT_OF_HOST_MEMORY : VK_SUCCESS));
+  return memory_types_index;
 }
 
 VkResult createBuffer(VkDevice &device, 
-  const VkPhysicalDeviceMemoryProperties& physMemProps,
-  const VkDeviceSize bufferSize,
+  const VkPhysicalDeviceMemoryProperties& phys_mem_props,
+  const VkDeviceSize buffer_size,
   const VkBufferUsageFlags usage,
-  const VkMemoryPropertyFlags propFlags,
+  const VkMemoryPropertyFlags prop_flags,
   VkBuffer& buffer,
   VkDeviceMemory& memory)
 {
-  VkBufferCreateInfo ci{
+  VkBufferCreateInfo buffer_ci{
     .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-    .size = bufferSize,
+    .size = buffer_size,
     .usage = usage,
     .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
   };
-  CHK(vkCreateBuffer(device, &ci, nullptr, &buffer));
+  CHK(vkCreateBuffer(device, &buffer_ci, nullptr, &buffer));
 
-  VkMemoryRequirements memRequirements;
-  vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
+  VkMemoryRequirements mem_requirements;
+  vkGetBufferMemoryRequirements(device, buffer, &mem_requirements);
 
-  uint32_t memoryTypeIndex =
-  findMemoryType(physMemProps,
-                 memRequirements.memoryTypeBits,
-                 propFlags);
-  const VkMemoryAllocateInfo memoryAllocateInfo {
+  uint32_t memory_type_index =
+  findMemoryType(phys_mem_props,
+                 mem_requirements.memoryTypeBits,
+                 prop_flags);
+  const VkMemoryAllocateInfo memory_ai {
     .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
     0,
-    .allocationSize = memRequirements.size,
-    .memoryTypeIndex = memoryTypeIndex,
+    .allocationSize = mem_requirements.size,
+    .memoryTypeIndex = memory_type_index,
   };
-  CHK(vkAllocateMemory(device, &memoryAllocateInfo, 0, &memory));
+  CHK(vkAllocateMemory(device, &memory_ai, 0, &memory));
   CHK(vkBindBufferMemory(device, buffer, memory, 0));
   return VK_SUCCESS;
 }
@@ -63,7 +63,7 @@ struct StagingBuffer
 {
   StagingBuffer(VkDevice& device, VkPhysicalDeviceMemoryProperties& props) :
   device_(device),
-  physMemProps_(props),
+  phys_mem_props_(props),
   buffer_(VK_NULL_HANDLE),
   memory_(VK_NULL_HANDLE) {}
   ~StagingBuffer() {
@@ -80,7 +80,7 @@ struct StagingBuffer
   }
 
   VkDevice device_;
-  VkPhysicalDeviceMemoryProperties physMemProps_;;
+  VkPhysicalDeviceMemoryProperties phys_mem_props_;;
   VkBuffer buffer_;
   VkDeviceMemory memory_;
   void* mapped_;
@@ -88,7 +88,7 @@ struct StagingBuffer
   VkResult allocate(const size_t size);
 };
 
-VkResult StagingBuffer::allocate(const size_t bufferSize) {
+VkResult StagingBuffer::allocate(const size_t buffer_size) {
   VkBufferUsageFlags usage =
     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
     VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
@@ -96,11 +96,11 @@ VkResult StagingBuffer::allocate(const size_t bufferSize) {
   VkMemoryPropertyFlags props =
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-  createBuffer(device_, physMemProps_,
-    bufferSize, usage, props,
+  createBuffer(device_, phys_mem_props_,
+    buffer_size, usage, props,
     buffer_, memory_);
   // Map the buffer memory
-  CHK(vkMapMemory(device_, memory_, 0/*offset*/, bufferSize, 0/*flags*/, &mapped_));
+  CHK(vkMapMemory(device_, memory_, 0/*offset*/, buffer_size, 0/*flags*/, &mapped_));
   return VK_SUCCESS;
 }
 
@@ -108,7 +108,7 @@ struct DeviceBuffer
 {
   DeviceBuffer(VkDevice& device, VkPhysicalDeviceMemoryProperties& props) :
   device_(device),
-  physMemProps_(props),
+  phys_mem_props_(props),
   buffer_(VK_NULL_HANDLE),
   memory_(VK_NULL_HANDLE) {}
   ~DeviceBuffer() {
@@ -123,22 +123,22 @@ struct DeviceBuffer
   }
 
   VkDevice device_;
-  VkPhysicalDeviceMemoryProperties physMemProps_;;
+  VkPhysicalDeviceMemoryProperties phys_mem_props_;;
   VkBuffer buffer_;
   VkDeviceMemory memory_;
 
   VkResult allocate(const size_t size);
 };
 
-VkResult DeviceBuffer::allocate(const size_t bufferSize) {
+VkResult DeviceBuffer::allocate(const size_t buffer_size) {
   VkBufferUsageFlags usage =
     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
     VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
     VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   VkMemoryPropertyFlags props =
     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-  createBuffer(device_, physMemProps_,
-    bufferSize, usage, props,
+  createBuffer(device_, phys_mem_props_,
+    buffer_size, usage, props,
     buffer_, memory_);
   return VK_SUCCESS;
 }
@@ -147,7 +147,7 @@ struct UniformBuffer
 {
   UniformBuffer(VkDevice& device, VkPhysicalDeviceMemoryProperties& props) :
   device_(device),
-  physMemProps_(props),
+  phys_mem_props_(props),
   buffer_(VK_NULL_HANDLE),
   memory_(VK_NULL_HANDLE),
   mapped_(nullptr) {}
@@ -165,7 +165,7 @@ struct UniformBuffer
   }
 
   VkDevice device_;
-  VkPhysicalDeviceMemoryProperties physMemProps_;
+  VkPhysicalDeviceMemoryProperties phys_mem_props_;
   VkBuffer buffer_;
   VkDeviceMemory memory_;
   void* mapped_;
@@ -181,7 +181,7 @@ VkResult UniformBuffer::allocate(const size_t size) {
   VkMemoryPropertyFlags props =
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-  createBuffer(device_, physMemProps_,
+  createBuffer(device_, phys_mem_props_,
     size, usage, props,
     buffer_, memory_);
   // Map the buffer memory

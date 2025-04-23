@@ -7,10 +7,10 @@
 namespace vk {
 
 struct Stream {
-  Stream(VkDevice device, VkQueue queue, VkCommandPool commandPool);
+  Stream(VkDevice device, VkQueue queue, VkCommandPool command_pool);
   ~Stream() {
-    if (timelineSemaphore_ != VK_NULL_HANDLE) {
-      vkDestroySemaphore(device_, timelineSemaphore_, nullptr);
+    if (timeline_semaphore_ != VK_NULL_HANDLE) {
+      vkDestroySemaphore(device_, timeline_semaphore_, nullptr);
     }
   }
 
@@ -28,35 +28,35 @@ private:
 public:
   VkDevice device_;
   VkQueue queue_;
-  VkCommandPool commandPool_;
-  VkCommandBuffer currentCommandBuf_;
-  std::vector<VkCommandBuffer> submittedCommandBufs_;
-  VkSemaphore timelineSemaphore_;
+  VkCommandPool command_pool_;
+  VkCommandBuffer current_command_buf_;
+  std::vector<VkCommandBuffer> submitted_command_bufs_;
+  VkSemaphore timeline_semaphore_;
   uint64_t timeline_value_;
 
-  const bool synchronize2Supported_ = true;
+  const bool synchronize2_supported_ = true;
   PFN_vkCmdPipelineBarrier2KHR vkCmdPipelineBarrier2KHR_ = nullptr;
 };
 
-Stream::Stream(VkDevice device, VkQueue queue, VkCommandPool commandPool) :
+Stream::Stream(VkDevice device, VkQueue queue, VkCommandPool command_pool) :
   device_(device),
   queue_(queue),
-  commandPool_(commandPool),
-  currentCommandBuf_(VK_NULL_HANDLE),
-  timelineSemaphore_(VK_NULL_HANDLE),
+  command_pool_(command_pool),
+  current_command_buf_(VK_NULL_HANDLE),
+  timeline_semaphore_(VK_NULL_HANDLE),
   timeline_value_(0) {
-    VkSemaphoreTypeCreateInfo timelineSemaphoreCI{
+    VkSemaphoreTypeCreateInfo timeline_semaphore_ci{
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
       .semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE,
       .initialValue = 0,
     };
     VkSemaphoreCreateInfo semaphoreCI{
       .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-      .pNext = &timelineSemaphoreCI,
+      .pNext = &timeline_semaphore_ci,
     };
-    CHK(vkCreateSemaphore(device_, &semaphoreCI, nullptr, &timelineSemaphore_));
+    CHK(vkCreateSemaphore(device_, &semaphoreCI, nullptr, &timeline_semaphore_));
   
-  if (synchronize2Supported_) {
+  if (synchronize2_supported_) {
     // Get process addresses
     vkCmdPipelineBarrier2KHR_ = reinterpret_cast<PFN_vkCmdPipelineBarrier2KHR>(
       vkGetDeviceProcAddr(device_, "vkCmdPipelineBarrier2KHR"));
@@ -64,79 +64,79 @@ Stream::Stream(VkDevice device, VkQueue queue, VkCommandPool commandPool) :
 }
 
 void Stream::begin() {
-  VkCommandBufferAllocateInfo commandBufferCI{
+  VkCommandBufferAllocateInfo command_buffer_ci{
     .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-    .commandPool = commandPool_,
+    .commandPool = command_pool_,
     .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
     .commandBufferCount = 1,
   };
-  CHK(vkAllocateCommandBuffers(device_, &commandBufferCI, &currentCommandBuf_));
-  VkCommandBufferBeginInfo beginInfo{
+  CHK(vkAllocateCommandBuffers(device_, &command_buffer_ci, &current_command_buf_));
+  VkCommandBufferBeginInfo begin_info{
     .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
     .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
   };
-  CHK(vkBeginCommandBuffer(currentCommandBuf_, &beginInfo));
+  CHK(vkBeginCommandBuffer(current_command_buf_, &begin_info));
 }
 
 void Stream::copy(VkBuffer src, VkBuffer dst, VkDeviceSize size) {
   check();
 
-  VkBufferCopy copyRegion{
+  VkBufferCopy copy_region{
     .srcOffset = 0,
     .dstOffset = 0,
     .size = size,
   };
-  vkCmdCopyBuffer(currentCommandBuf_, src, dst, 1, &copyRegion);
+  vkCmdCopyBuffer(current_command_buf_, src, dst, 1, &copy_region);
 }
 
 void Stream::dispatch(ComputeShader& cs, uint32_t group_x, uint32_t group_y, uint32_t group_z) {
   check();
 
-  vkCmdBindPipeline(currentCommandBuf_, VK_PIPELINE_BIND_POINT_COMPUTE, cs.pipeline_);
-  vkCmdBindDescriptorSets(currentCommandBuf_,
+  vkCmdBindPipeline(current_command_buf_, VK_PIPELINE_BIND_POINT_COMPUTE, cs.pipeline_);
+  vkCmdBindDescriptorSets(current_command_buf_,
     VK_PIPELINE_BIND_POINT_COMPUTE,
-    cs.pipelineLayout_,
+    cs.pipeline_layout_,
     0 /*firstSet*/, 1/*descriptorSetCount*/,
-    &(cs.descriptorSets_[0]),
+    &(cs.descriptor_sets_[0]),
     0/*DynamicOffsetCount*/,
     nullptr);
   // group count x,y,z
-  vkCmdDispatch(currentCommandBuf_, group_x, group_y, group_z);
+  vkCmdDispatch(current_command_buf_, group_x, group_y, group_z);
 }
 
 void Stream::barrier() {
   check();
 
-  if (synchronize2Supported_) {
-    VkMemoryBarrier2KHR memoryBarrier {
+  if (synchronize2_supported_) {
+    VkMemoryBarrier2KHR memory_barrier {
       .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2_KHR,
       .srcStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
       .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
       .dstStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
       .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
     };
-    VkDependencyInfoKHR dependencyInfo{
+    VkDependencyInfoKHR dependency_info{
       .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO_KHR,
       .memoryBarrierCount = 1,
-      .pMemoryBarriers = &memoryBarrier,
+      .pMemoryBarriers = &memory_barrier,
       .bufferMemoryBarrierCount = 0,
       .pBufferMemoryBarriers = nullptr,
       .imageMemoryBarrierCount = 0,
       .pImageMemoryBarriers = nullptr,
     };
-    vkCmdPipelineBarrier2KHR_(currentCommandBuf_, &dependencyInfo);
+    vkCmdPipelineBarrier2KHR_(current_command_buf_, &dependency_info);
   } else {
-    VkMemoryBarrier memoryBarrier{
+    VkMemoryBarrier memory_barrier{
       .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
       .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
       .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
     };
     vkCmdPipelineBarrier(
-      currentCommandBuf_,
+      current_command_buf_,
       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, //srcStageMask
       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, //dstStageMask
       0, //dependencyFlags
-      1/*memoryBarrierCount*/, &memoryBarrier, //pMemoryBarriers
+      1/*memoryBarrierCount*/, &memory_barrier, //pMemoryBarriers
       0/*bufferMemoryBarrierCount*/, nullptr, // pBufferMemoryBarriers
       0/*imageMemoryBarrierCount*/, nullptr);// pImageMemoryBarriers
   }
@@ -144,7 +144,7 @@ void Stream::barrier() {
 
 void Stream::submit() {
   check();
-  CHK(vkEndCommandBuffer(currentCommandBuf_));
+  CHK(vkEndCommandBuffer(current_command_buf_));
 
   uint64_t wait_value = timeline_value_;
   uint64_t signal_value = ++timeline_value_;
@@ -163,33 +163,33 @@ void Stream::submit() {
     .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
     .pNext = &timeline_info,
     .waitSemaphoreCount = 1,
-    .pWaitSemaphores = &timelineSemaphore_,
+    .pWaitSemaphores = &timeline_semaphore_,
     .pWaitDstStageMask = &wait_stage,
     .commandBufferCount = 1,
-    .pCommandBuffers = &currentCommandBuf_,
+    .pCommandBuffers = &current_command_buf_,
     .signalSemaphoreCount = 1,
-    .pSignalSemaphores = &timelineSemaphore_,
+    .pSignalSemaphores = &timeline_semaphore_,
   };
 
   CHK(vkQueueSubmit(queue_, 1, &submit_info, VK_NULL_HANDLE));
-  submittedCommandBufs_.push_back(currentCommandBuf_);
-  currentCommandBuf_ = VK_NULL_HANDLE;
+  submitted_command_bufs_.push_back(current_command_buf_);
+  current_command_buf_ = VK_NULL_HANDLE;
 }
 
 void Stream::synchronize() {
   wait(timeline_value_);
   // free finished command buffers
-  for (auto commandBuffer : submittedCommandBufs_) {
-    vkFreeCommandBuffers(device_, commandPool_, 1, &commandBuffer);
+  for (auto command_buffer : submitted_command_bufs_) {
+    vkFreeCommandBuffers(device_, command_pool_, 1, &command_buffer);
   }
-  submittedCommandBufs_.clear();
+  submitted_command_bufs_.clear();
 }
 
 void Stream::wait(const uint64_t wait_value) {
   VkSemaphoreWaitInfo wait_info {
     .sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
     .semaphoreCount = 1,
-    .pSemaphores = &timelineSemaphore_,
+    .pSemaphores = &timeline_semaphore_,
     .pValues = &wait_value,
   };
 
@@ -198,7 +198,7 @@ void Stream::wait(const uint64_t wait_value) {
 }
 
 void Stream::check() {
-  if (currentCommandBuf_ == VK_NULL_HANDLE) {
+  if (current_command_buf_ == VK_NULL_HANDLE) {
     std::cerr << "Command buffer is not started" << std::endl;
     CHK(VK_ERROR_NOT_PERMITTED)
   }
