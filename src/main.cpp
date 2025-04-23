@@ -74,13 +74,13 @@ private:
   std::vector<std::unique_ptr<vk::ComputeShader>> compute_shaders_;
   std::vector<VkDescriptorSet> descriptorSets_;
 
-  bool sync2_supported_ = false;
+  bool synchronization2_supported_ = false;
   PFN_vkCmdPipelineBarrier2KHR vkCmdPipelineBarrier2KHR_;
 };
 
 
 void Application::initialize() {
-  std::cout << "==== Create vulkan instance ====" << std::endl;
+
   const VkApplicationInfo appInfo = {
     .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, // sType
     .pApplicationName = "VulkanCompute",      // Application Name
@@ -89,36 +89,38 @@ void Application::initialize() {
     .apiVersion= VK_API_VERSION_1_3    // Vulkan API version
   };
   
-  VkInstanceCreateInfo instance_ci = {
-    .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-    .pApplicationInfo = &appInfo
-  };
+  {// Create instance
+    std::cout << "==== Create vulkan instance ====" << std::endl;
+    VkInstanceCreateInfo instance_ci = {
+      .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+      .pApplicationInfo = &appInfo
+    };
 
-  std::vector<const char*> layers;
-  std::vector<const char*> extensions;
-  VkValidationFeaturesEXT validation_features = {
-    .sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
-    .enabledValidationFeatureCount = 0,
-    .pEnabledValidationFeatures = nullptr,
-  };
-  std::vector<VkValidationFeatureEnableEXT>  validation_feat_enables = {
-    VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT
-  };
-  layers.push_back("VK_LAYER_KHRONOS_synchronization2");
-  if (gUseValidation)
-  {
-    layers.push_back("VK_LAYER_KHRONOS_validation");
-    validation_features.enabledValidationFeatureCount = validation_feat_enables.size();
-    validation_features.pEnabledValidationFeatures = validation_feat_enables.data();
-    instance_ci.pNext = &validation_features;
+    std::vector<const char*> layers;
+    std::vector<const char*> extensions;
+    VkValidationFeaturesEXT validation_features = {
+      .sType = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
+      .enabledValidationFeatureCount = 0,
+      .pEnabledValidationFeatures = nullptr,
+    };
+    std::vector<VkValidationFeatureEnableEXT>  validation_feat_enables = {
+      VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT
+    };
+    layers.push_back("VK_LAYER_KHRONOS_synchronization2");
+    if (gUseValidation)
+    {
+      layers.push_back("VK_LAYER_KHRONOS_validation");
+      validation_features.enabledValidationFeatureCount = validation_feat_enables.size();
+      validation_features.pEnabledValidationFeatures = validation_feat_enables.data();
+      instance_ci.pNext = &validation_features;
+    }
+    instance_ci.enabledLayerCount = static_cast<uint32_t>(layers.size());
+    instance_ci.ppEnabledLayerNames = layers.data();
+    instance_ci.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+    instance_ci.ppEnabledExtensionNames = extensions.data();
+
+    CHK(vkCreateInstance(&instance_ci, nullptr, &instance_));
   }
-  instance_ci.enabledLayerCount = static_cast<uint32_t>(layers.size());
-  instance_ci.ppEnabledLayerNames = layers.data();
-  instance_ci.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
-  instance_ci.ppEnabledExtensionNames = extensions.data();
-
-  CHK(vkCreateInstance(&instance_ci, nullptr, &instance_));
-
   uint32_t version = 0;
   vkEnumerateInstanceVersion(&version);
   std::cout << "Vulkan Instance version: " <<
@@ -126,42 +128,45 @@ void Application::initialize() {
         VK_VERSION_MINOR(version) << "." <<
         VK_VERSION_PATCH(version) << std::endl;
 
-  std::cout << "==== Create physical device ====" << std::endl;
-  uint32_t n_phys_dev = 0;
-  CHK(vkEnumeratePhysicalDevices(instance_, &n_phys_dev, nullptr));
-  std::vector<VkPhysicalDevice> phys_devs(n_phys_dev);
-  std::vector<VkPhysicalDeviceProperties> props(n_phys_dev);
-  CHK(vkEnumeratePhysicalDevices(instance_, &n_phys_dev, phys_devs.data()));
-  for (uint32_t i = 0; i < n_phys_dev; ++i) {
-    vkGetPhysicalDeviceProperties(phys_devs[i], &props[i]);
-    std::cout << "GPU " << i << ": " << props[i].deviceName << " "
-              << VK_VERSION_MAJOR(props[i].apiVersion) << "."
-              << VK_VERSION_MINOR(props[i].apiVersion) << "." 
-              << VK_VERSION_PATCH(props[i].apiVersion) << std::endl;
+  {// Create physical device
+    std::cout << "==== Create physical device ====" << std::endl;
+    uint32_t n_phys_dev = 0;
+    CHK(vkEnumeratePhysicalDevices(instance_, &n_phys_dev, nullptr));
+    std::vector<VkPhysicalDevice> phys_devs(n_phys_dev);
+    std::vector<VkPhysicalDeviceProperties> props(n_phys_dev);
+    CHK(vkEnumeratePhysicalDevices(instance_, &n_phys_dev, phys_devs.data()));
+    for (uint32_t i = 0; i < n_phys_dev; ++i) {
+      vkGetPhysicalDeviceProperties(phys_devs[i], &props[i]);
+      std::cout << "GPU " << i << ": " << props[i].deviceName << " "
+                << VK_VERSION_MAJOR(props[i].apiVersion) << "."
+                << VK_VERSION_MINOR(props[i].apiVersion) << "." 
+                << VK_VERSION_PATCH(props[i].apiVersion) << std::endl;
+    }
+
+    // use gpu[0]
+    const int used_index = 0;
+    physical_device_ = phys_devs[used_index];
+    const VkPhysicalDeviceLimits& limits = props[used_index].limits;
+    std::cout << "Using GPU " << used_index << ": " << props[used_index].deviceName << std::endl;
+    std::cout << "==== Physical device limits ====" << std::endl;
+    std::cout << "maxUniformBufferRange: " << limits.maxUniformBufferRange << std::endl;
+    std::cout << "maxStorageBufferRange: " << limits.maxStorageBufferRange << std::endl;
+    std::cout << "maxPushConstantsSize: " << limits.maxPushConstantsSize << std::endl;
+    std::cout << "maxMemoryAllocationCount: " << limits.maxMemoryAllocationCount << std::endl;
+    std::cout << "maxSamplerAllocationCount: " << limits.maxSamplerAllocationCount << std::endl;
+
+    // Get memory properties
+    vkGetPhysicalDeviceMemoryProperties(physical_device_, &phys_memory_props_);
   }
 
-  // use gpu[0]
-  const int used_index = 0;
-  physical_device_ = phys_devs[used_index];
-  const VkPhysicalDeviceLimits& limits = props[used_index].limits;
-  std::cout << "Using GPU " << used_index << ": " << props[used_index].deviceName << std::endl;
-  std::cout << "==== Physical device limits ====" << std::endl;
-  std::cout << "maxUniformBufferRange: " << limits.maxUniformBufferRange << std::endl;
-  std::cout << "maxStorageBufferRange: " << limits.maxStorageBufferRange << std::endl;
-  std::cout << "maxPushConstantsSize: " << limits.maxPushConstantsSize << std::endl;
-  std::cout << "maxMemoryAllocationCount: " << limits.maxMemoryAllocationCount << std::endl;
-  std::cout << "maxSamplerAllocationCount: " << limits.maxSamplerAllocationCount << std::endl;
-
-  // Get memory properties
-  vkGetPhysicalDeviceMemoryProperties(physical_device_, &phys_memory_props_);
-
   // Get queue family properties
-  vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &n_phys_dev, nullptr);
-  std::vector<VkQueueFamilyProperties> queue_family_props(n_phys_dev);
-  vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &n_phys_dev, queue_family_props.data());
+  uint32_t n_queue_family_props = 0;
+  vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &n_queue_family_props, nullptr);
+  std::vector<VkQueueFamilyProperties> queue_family_props(n_queue_family_props);
+  vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &n_queue_family_props, queue_family_props.data());
   uint32_t compute_queue_family_index = 0;
   uint32_t n_compute_queue = 0;
-  for (uint32_t i = 0; i < n_phys_dev; ++i) {
+  for (uint32_t i = 0; i < n_queue_family_props; ++i) {
     if (queue_family_props[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
       compute_queue_family_index = i;
       n_compute_queue = queue_family_props[i].queueCount;
@@ -176,77 +181,84 @@ void Application::initialize() {
   std::vector<VkExtensionProperties> supported_exts(n_extensions);
   vkEnumerateDeviceExtensionProperties(physical_device_, nullptr, &n_extensions, supported_exts.data());
 
-  sync2_supported_ = false;
+  synchronization2_supported_ = false;
   for (const auto& ext : supported_exts) {
       if (std::strcmp(ext.extensionName, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME) == 0) {
-        sync2_supported_ = true;
+        synchronization2_supported_ = true;
           break;
       }
   }
   std::cout << "==== Supported extensions ====" << std::endl;
-  std::cout << "VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME: " << sync2_supported_ << std::endl;
-  if (sync2_supported_) {
-    extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+  std::cout << "VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME: " << synchronization2_supported_ << std::endl;
+
+  {// Create device
+    std::cout << "==== Create device ====" << std::endl;
+    std::vector<const char*> extensions;
+    if (synchronization2_supported_) {
+      extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+    }
+    const float queue_priorities = 1.0f;
+    VkDeviceQueueCreateInfo device_queue_ci{
+      .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+      .queueFamilyIndex = compute_queue_family_index,
+      .queueCount = 1,
+      .pQueuePriorities = &queue_priorities,
+    };
+    VkPhysicalDeviceSynchronization2FeaturesKHR sync2_features{
+      .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR,
+      .synchronization2 = VK_TRUE,
+    };
+    VkDeviceCreateInfo device_ci{
+      .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+      .pNext = synchronization2_supported_ ? &sync2_features : nullptr,
+      .queueCreateInfoCount = 1,
+      .pQueueCreateInfos = &device_queue_ci,
+      .enabledExtensionCount = static_cast<uint32_t>(extensions.size()),
+      .ppEnabledExtensionNames = extensions.data(),
+    };
+
+    CHK(vkCreateDevice(physical_device_, &device_ci, nullptr, &device_));
+    // Get process addresses
+    vkCmdPipelineBarrier2KHR_ = reinterpret_cast<PFN_vkCmdPipelineBarrier2KHR>(
+      vkGetDeviceProcAddr(device_, "vkCmdPipelineBarrier2KHR"));
+    
+    vkGetDeviceQueue(device_, compute_queue_family_index, 0/*queueIndex*/, &compute_queue_);
   }
 
-  std::cout << "==== Create device ====" << std::endl;
-  const float queue_priorities = 1.0f;
-  VkDeviceQueueCreateInfo device_queue_ci{
-    .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-    .queueFamilyIndex = compute_queue_family_index,
-    .queueCount = 1,
-    .pQueuePriorities = &queue_priorities,
-  };
-  VkPhysicalDeviceSynchronization2FeaturesKHR sync2_features{
-    .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR,
-    .synchronization2 = VK_TRUE,
-  };
-  VkDeviceCreateInfo device_ci{
-    .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-    .pNext = sync2_supported_ ? &sync2_features : nullptr,
-    .queueCreateInfoCount = 1,
-    .pQueueCreateInfos = &device_queue_ci,
-    .enabledExtensionCount = static_cast<uint32_t>(extensions.size()),
-    .ppEnabledExtensionNames = extensions.data(),
-  };
+  {// Create command pool
+    std::cout << "==== Create command pool ====" << std::endl;
+    VkCommandPoolCreateInfo command_pool_ci{
+      .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+      .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+      .queueFamilyIndex = compute_queue_family_index,
+    };
+    CHK(vkCreateCommandPool(device_, &command_pool_ci, nullptr, &command_pool_));
+  }
 
-  CHK(vkCreateDevice(physical_device_, &device_ci, nullptr, &device_));
-  // Get process addresses
-  vkCmdPipelineBarrier2KHR_ = reinterpret_cast<PFN_vkCmdPipelineBarrier2KHR>(
-    vkGetDeviceProcAddr(device_, "vkCmdPipelineBarrier2KHR"));
-
-  vkGetDeviceQueue(device_, compute_queue_family_index, 0/*queueIndex*/, &compute_queue_);
-
-  std::cout << "==== Create command pool ====" << std::endl;
-  VkCommandPoolCreateInfo command_pool_ci{
-    .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-    .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-    .queueFamilyIndex = compute_queue_family_index,
-  };
-  CHK(vkCreateCommandPool(device_, &command_pool_ci, nullptr, &command_pool_));
-
-  std::cout << "==== Create descriptor pool ====" << std::endl;
-  // A descriptor pool holds a sufficient 
-  // number of descriptors to be used by the application, 
-  // and when a descriptor set is allocated, it is cut out of the pool.
-  const uint32_t n_descriptor = 100;
-  std::vector<VkDescriptorPoolSize> pool_sizes {
-    {
-      .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-      .descriptorCount = n_descriptor,
-    },
-    {
-      .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-      .descriptorCount = n_descriptor,
-    },
-  };
-  VkDescriptorPoolCreateInfo descriptor_pool_ci {
-    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-    .maxSets = n_descriptor,
-    .poolSizeCount = uint32_t(pool_sizes.size()),
-    .pPoolSizes = pool_sizes.data(),
-  };
-  CHK(vkCreateDescriptorPool(device_, &descriptor_pool_ci, nullptr, &descriptor_pool_));
+  {// Create descriptor pool
+    std::cout << "==== Create descriptor pool ====" << std::endl;
+    // A descriptor pool holds a sufficient 
+    // number of descriptors to be used by the application, 
+    // and when a descriptor set is allocated, it is cut out of the pool.
+    const uint32_t n_descriptor = 100;
+    std::vector<VkDescriptorPoolSize> pool_sizes {
+      {
+        .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = n_descriptor,
+      },
+      {
+        .type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .descriptorCount = n_descriptor,
+      },
+    };
+    VkDescriptorPoolCreateInfo descriptor_pool_ci {
+      .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+      .maxSets = n_descriptor,
+      .poolSizeCount = uint32_t(pool_sizes.size()),
+      .pPoolSizes = pool_sizes.data(),
+    };
+    CHK(vkCreateDescriptorPool(device_, &descriptor_pool_ci, nullptr, &descriptor_pool_));
+  }
 
   std::cout << "==== Create compute shader ====" << std::endl;
   for (size_t i = 0; i < 2; ++i) {
