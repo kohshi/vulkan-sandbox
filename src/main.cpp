@@ -1,5 +1,5 @@
 #include "buffers.hpp"
-#include "semaphore.hpp"
+#include "stream.hpp"
 #include "kernel.hpp"
 #include "vulkan_utils.hpp"
 
