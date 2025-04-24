@@ -63,11 +63,18 @@ VkResult createBuffer(VkDevice &device,
 
 struct StagingBuffer
 {
-  StagingBuffer(VkDevice& device, VkPhysicalDeviceMemoryProperties& props) :
+  StagingBuffer(VkDevice& device,
+                VkPhysicalDeviceMemoryProperties& props,
+                const size_t size) :
   device_(device),
-  phys_mem_props_(props),
-  buffer_(VK_NULL_HANDLE),
-  memory_(VK_NULL_HANDLE) {}
+  phys_mem_props_(props) {
+    CHK(allocate(size));
+  }
+  StagingBuffer() = delete;
+  StagingBuffer(const StagingBuffer&) = delete;
+  StagingBuffer& operator=(const StagingBuffer&) = delete;
+  StagingBuffer(StagingBuffer&&) = delete;
+  StagingBuffer& operator=(StagingBuffer&&) = delete;
   ~StagingBuffer() {
     if (mapped_ != nullptr) {
       vkUnmapMemory(device_, memory_);
@@ -86,11 +93,11 @@ struct StagingBuffer
   VkBuffer buffer_;
   VkDeviceMemory memory_;
   void* mapped_;
-
+private:
   VkResult allocate(const size_t size);
 };
 
-VkResult StagingBuffer::allocate(const size_t buffer_size) {
+VkResult StagingBuffer::allocate(const size_t size) {
   VkBufferUsageFlags usage =
     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
     VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
@@ -99,20 +106,27 @@ VkResult StagingBuffer::allocate(const size_t buffer_size) {
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
   createBuffer(device_, phys_mem_props_,
-    buffer_size, usage, props,
+    size, usage, props,
     buffer_, memory_);
   // Map the buffer memory
-  CHK(vkMapMemory(device_, memory_, 0/*offset*/, buffer_size, 0/*flags*/, &mapped_));
+  CHK(vkMapMemory(device_, memory_, 0/*offset*/, size, 0/*flags*/, &mapped_));
   return VK_SUCCESS;
 }
 
 struct DeviceBuffer
 {
-  DeviceBuffer(VkDevice& device, VkPhysicalDeviceMemoryProperties& props) :
+  DeviceBuffer(VkDevice& device,
+               VkPhysicalDeviceMemoryProperties& props,
+               const size_t size) :
   device_(device),
-  phys_mem_props_(props),
-  buffer_(VK_NULL_HANDLE),
-  memory_(VK_NULL_HANDLE) {}
+  phys_mem_props_(props) {
+    CHK(allocate(size));
+  }
+  DeviceBuffer() = delete;
+  DeviceBuffer(const DeviceBuffer&) = delete;
+  DeviceBuffer& operator=(const DeviceBuffer&) = delete;
+  DeviceBuffer(DeviceBuffer&&) = delete;
+  DeviceBuffer& operator=(DeviceBuffer&&) = delete;
   ~DeviceBuffer() {
     if (buffer_ != VK_NULL_HANDLE) {
       vkDestroyBuffer(device_, buffer_, nullptr);
@@ -128,11 +142,11 @@ struct DeviceBuffer
   VkPhysicalDeviceMemoryProperties phys_mem_props_;;
   VkBuffer buffer_;
   VkDeviceMemory memory_;
-
+private:
   VkResult allocate(const size_t size);
 };
 
-VkResult DeviceBuffer::allocate(const size_t buffer_size) {
+VkResult DeviceBuffer::allocate(const size_t size) {
   VkBufferUsageFlags usage =
     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
     VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
@@ -140,19 +154,25 @@ VkResult DeviceBuffer::allocate(const size_t buffer_size) {
   VkMemoryPropertyFlags props =
     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
   createBuffer(device_, phys_mem_props_,
-    buffer_size, usage, props,
+    size, usage, props,
     buffer_, memory_);
   return VK_SUCCESS;
 }
 
 struct UniformBuffer
 {
-  UniformBuffer(VkDevice& device, VkPhysicalDeviceMemoryProperties& props) :
+  UniformBuffer(VkDevice& device,
+                VkPhysicalDeviceMemoryProperties& props,
+                const size_t size) :
   device_(device),
-  phys_mem_props_(props),
-  buffer_(VK_NULL_HANDLE),
-  memory_(VK_NULL_HANDLE),
-  mapped_(nullptr) {}
+  phys_mem_props_(props) {
+    CHK(allocate(size));
+  }
+  UniformBuffer() = delete;
+  UniformBuffer(const UniformBuffer&) = delete;
+  UniformBuffer& operator=(const UniformBuffer&) = delete;
+  UniformBuffer(UniformBuffer&&) = delete;
+  UniformBuffer& operator=(UniformBuffer&&) = delete;
   ~UniformBuffer() {
     if (mapped_ != nullptr) {
       vkUnmapMemory(device_, memory_);
@@ -171,7 +191,7 @@ struct UniformBuffer
   VkBuffer buffer_;
   VkDeviceMemory memory_;
   void* mapped_;
-  
+private:
   VkResult allocate(const size_t size);
 };
 

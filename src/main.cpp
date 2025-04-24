@@ -11,8 +11,6 @@
 #include <fstream>
 #include <cstring>
 
-// #define VOLK_IMPLEMENTATION
-// #include "volk/volk.h"
 
 
 bool gUseValidation = false;
@@ -43,7 +41,7 @@ public:
       vkDestroyCommandPool(device_, command_pool_, nullptr);
     }
     if (device_ != VK_NULL_HANDLE) {
-      CHK(vkDeviceWaitIdle(device_));
+      vkDeviceWaitIdle(device_);
       std::cout << "==== Destroy device ====" << std::endl;
       vkDestroyDevice(device_, nullptr);
     }
@@ -270,8 +268,7 @@ void Application::run() {
     uint32_t x, y, z;
   };
   params grid = { 1, 2, 4 };
-  uniform_buffer_.reset(new vk::UniformBuffer(device_, phys_memory_props_));
-  uniform_buffer_->allocate(sizeof(params));
+  uniform_buffer_.reset(new vk::UniformBuffer(device_, phys_memory_props_, sizeof(params)));
   memcpy(uniform_buffer_->mapped_, &grid, sizeof(params));
   
   // Allocate input and output buffers
@@ -280,16 +277,10 @@ void Application::run() {
 
   const VkDeviceSize memory_size = buffer_size;
   
-  input_buffer_.reset(new vk::StagingBuffer(device_, phys_memory_props_));
-  output_buffer_.reset(new vk::StagingBuffer(device_, phys_memory_props_));
-  d_input_buffer_.reset(new vk::DeviceBuffer(device_, phys_memory_props_));
-  d_output_buffer_.reset(new vk::DeviceBuffer(device_, phys_memory_props_));
-
-  input_buffer_->allocate(memory_size);
-  output_buffer_->allocate(memory_size);
-
-  d_input_buffer_->allocate(memory_size);
-  d_output_buffer_->allocate(memory_size);
+  input_buffer_.reset(new vk::StagingBuffer(device_, phys_memory_props_, memory_size));
+  output_buffer_.reset(new vk::StagingBuffer(device_, phys_memory_props_, memory_size));
+  d_input_buffer_.reset(new vk::DeviceBuffer(device_, phys_memory_props_, memory_size));
+  d_output_buffer_.reset(new vk::DeviceBuffer(device_, phys_memory_props_, memory_size));
 
   // Set input data.
   for (uint32_t i = 0; i < n_elements; ++i) {
