@@ -1,0 +1,93 @@
+@startuml
+class Application {
+  - VkInstance instance_
+  - VkPhysicalDevice physical_device_
+  - VkPhysicalDeviceMemoryProperties phys_memory_props_
+  - VkDevice device_
+  - VkQueue compute_queue_
+  - VkCommandPool command_pool_
+  - VkDescriptorPool descriptor_pool_
+  - std::unique_ptr<vk::Stream> stream_
+  - std::unique_ptr<UniformBuffer> uniform_buffer_
+  - std::unique_ptr<StagingBuffer> input_buffer_
+  - std::unique_ptr<DeviceBuffer> d_input_buffer_
+  - std::unique_ptr<StagingBuffer> output_buffer_
+  - std::unique_ptr<DeviceBuffer> d_output_buffer_
+  - std::vector<std::unique_ptr<vk::ComputeShader<PushConstants>>> compute_shaders_
+  - std::vector<VkDescriptorSet> descriptorSets_
+  - bool synchronization2_supported_
+  - PFN_vkCmdPipelineBarrier2KHR vkCmdPipelineBarrier2KHR_
+  + void initialize()
+  + void run()
+}
+
+struct PushConstants {
+  + uint32_t x
+  + uint32_t y
+  + uint32_t z
+}
+
+struct StagingBuffer {
+  - VkDevice device_
+  - VkPhysicalDeviceMemoryProperties phys_mem_props_
+  - VkBuffer buffer_
+  - VkDeviceMemory memory_
+  - void* mapped_
+  + VkResult allocate(size_t size)
+}
+
+struct DeviceBuffer {
+  - VkDevice device_
+  - VkPhysicalDeviceMemoryProperties phys_mem_props_
+  - VkBuffer buffer_
+  - VkDeviceMemory memory_
+  + VkResult allocate(size_t size)
+}
+
+struct UniformBuffer {
+  - VkDevice device_
+  - VkPhysicalDeviceMemoryProperties phys_mem_props_
+  - VkBuffer buffer_
+  - VkDeviceMemory memory_
+  - void* mapped_
+  + VkResult allocate(size_t size)
+}
+
+class vk::Stream {
+  - VkDevice device_
+  - VkQueue queue_
+  - VkCommandPool command_pool_
+  - VkCommandBuffer current_command_buf_
+  - std::vector<VkCommandBuffer> submitted_command_bufs_
+  - VkSemaphore timeline_semaphore_
+  - uint64_t timeline_value_
+  - bool synchronize2_supported_
+  - PFN_vkCmdPipelineBarrier2KHR vkCmdPipelineBarrier2KHR_
+  + void begin()
+  + void copy(VkBuffer src, VkBuffer dst, VkDeviceSize size)
+  + void barrier()
+  + void dispatch(vk::ComputeShader<PushConstants>& cs, uint32_t group_x, uint32_t group_y, uint32_t group_z)
+  + void submit()
+  + void synchronize()
+}
+
+class vk::ComputeShader<PushConstants> {
+  - VkDevice device_
+  - VkDescriptorPool descriptor_pool_
+  - VkShaderModule shader_module_
+  - VkDescriptorSetLayout descriptor_set_layout_
+  - VkPipelineLayout pipeline_layout_
+  - VkPipeline pipeline_
+  - std::vector<VkDescriptorSet> descriptor_sets_
+  - VkPushConstantRange push_range_
+  - PushConstants push_constants_
+  + void bind(PushConstants& push_constants, std::vector<std::tuple<VkDescriptorType, VkBuffer>>& args)
+}
+
+Application --> vk::Stream
+Application --> UniformBuffer
+Application --> StagingBuffer
+Application --> DeviceBuffer
+Application --> vk::ComputeShader<PushConstants>
+vk::Stream --> vk::ComputeShader<PushConstants>
+@enduml
