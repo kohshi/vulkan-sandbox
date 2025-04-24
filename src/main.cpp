@@ -69,11 +69,11 @@ private:
   VkDescriptorPool descriptor_pool_;
   std::unique_ptr<vk::Stream> stream_;
 
-  std::unique_ptr<UniformBuffer> uniform_buffer_;
-  std::unique_ptr<StagingBuffer> input_buffer_;
-  std::unique_ptr<DeviceBuffer> d_input_buffer_;
-  std::unique_ptr<StagingBuffer> output_buffer_;
-  std::unique_ptr<DeviceBuffer> d_output_buffer_;
+  std::unique_ptr<vk::UniformBuffer> uniform_buffer_;
+  std::unique_ptr<vk::StagingBuffer> input_buffer_;
+  std::unique_ptr<vk::DeviceBuffer> d_input_buffer_;
+  std::unique_ptr<vk::StagingBuffer> output_buffer_;
+  std::unique_ptr<vk::DeviceBuffer> d_output_buffer_;
   std::vector<std::unique_ptr<vk::ComputeShader<PushConstants>>> compute_shaders_;
   std::vector<VkDescriptorSet> descriptorSets_;
 
@@ -215,10 +215,7 @@ void Application::initialize() {
     };
 
     CHK(vkCreateDevice(physical_device_, &device_ci, nullptr, &device_));
-    // Get process addresses
-    vkCmdPipelineBarrier2KHR_ = reinterpret_cast<PFN_vkCmdPipelineBarrier2KHR>(
-      vkGetDeviceProcAddr(device_, "vkCmdPipelineBarrier2KHR"));
-    
+
     vkGetDeviceQueue(device_, compute_queue_family_index, 0/*queueIndex*/, &compute_queue_);
   }
 
@@ -276,7 +273,7 @@ void Application::run() {
     uint32_t x, y, z;
   };
   params grid = { 1, 2, 4 };
-  uniform_buffer_.reset(new UniformBuffer(device_, phys_memory_props_));
+  uniform_buffer_.reset(new vk::UniformBuffer(device_, phys_memory_props_));
   uniform_buffer_->allocate(sizeof(params));
   memcpy(uniform_buffer_->mapped_, &grid, sizeof(params));
   
@@ -286,10 +283,10 @@ void Application::run() {
 
   const VkDeviceSize memory_size = buffer_size;
   
-  input_buffer_.reset(new StagingBuffer(device_, phys_memory_props_));
-  output_buffer_.reset(new StagingBuffer(device_, phys_memory_props_));
-  d_input_buffer_.reset(new DeviceBuffer(device_, phys_memory_props_));
-  d_output_buffer_.reset(new DeviceBuffer(device_, phys_memory_props_));
+  input_buffer_.reset(new vk::StagingBuffer(device_, phys_memory_props_));
+  output_buffer_.reset(new vk::StagingBuffer(device_, phys_memory_props_));
+  d_input_buffer_.reset(new vk::DeviceBuffer(device_, phys_memory_props_));
+  d_output_buffer_.reset(new vk::DeviceBuffer(device_, phys_memory_props_));
 
   input_buffer_->allocate(memory_size);
   output_buffer_->allocate(memory_size);

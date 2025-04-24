@@ -3,6 +3,8 @@
 
 #include <vulkan/vulkan.h>
 
+namespace vk {
+
 namespace {
 uint32_t findMemoryType(const VkPhysicalDeviceMemoryProperties& props,
     const uint32_t memory_types_bits,
@@ -188,3 +190,4 @@ VkResult UniformBuffer::allocate(const size_t size) {
   CHK(vkMapMemory(device_, memory_, 0/*offset*/, size, 0/*flags*/, &mapped_));
   return VK_SUCCESS;
 }
+};// namespace vk
