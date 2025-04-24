@@ -58,8 +58,8 @@ struct vk::UniformBuffer {
   - VkPhysicalDeviceMemoryProperties phys_mem_props_
   - VkBuffer buffer_
   - VkDeviceMemory memory_
+  + allocate(const size_t size)
   - void* mapped_
-  + allocate()
 }
 
 struct vk::StagingBuffer {
@@ -67,8 +67,8 @@ struct vk::StagingBuffer {
   - VkPhysicalDeviceMemoryProperties phys_mem_props_
   - VkBuffer buffer_
   - VkDeviceMemory memory_
+  + allocate(const size_t size)
   - void* mapped_
-  + allocate()
 }
 
 struct vk::DeviceBuffer {
@@ -76,7 +76,7 @@ struct vk::DeviceBuffer {
   - VkPhysicalDeviceMemoryProperties phys_mem_props_
   - VkBuffer buffer_
   - VkDeviceMemory memory_
-  + allocate()
+  + allocate(const size_t size)
 }
 
 Application --> vk::Stream
