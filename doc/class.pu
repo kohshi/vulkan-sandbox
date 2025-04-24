@@ -88,6 +88,6 @@ Application --> vk::Stream
 Application --> UniformBuffer
 Application --> StagingBuffer
 Application --> DeviceBuffer
-Application --> vk::ComputeShader<PushConstants>
-vk::Stream --> vk::ComputeShader<PushConstants>
+Application --> vk::ComputeShader
+vk::Stream --> vk::ComputeShader
 @enduml
