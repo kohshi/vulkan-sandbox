@@ -78,7 +78,6 @@ private:
   std::vector<VkDescriptorSet> descriptorSets_;
 
   bool synchronization2_supported_ = false;
-  PFN_vkCmdPipelineBarrier2KHR vkCmdPipelineBarrier2KHR_;
 };
 
 
