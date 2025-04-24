@@ -190,9 +190,6 @@ void Application::initialize() {
     if (synchronization2_supported_) {
       extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
     }
-    if (gUseValidation) {
-      extensions.push_back(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME);
-    }
     const float queue_priorities = 1.0f;
     VkPhysicalDeviceSynchronization2FeaturesKHR sync2_features{
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR,
