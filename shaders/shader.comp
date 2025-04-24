@@ -3,6 +3,11 @@
 
 layout(local_size_x = 32, local_size_y = 1) in;
 
+layout(push_constant) uniform PushConstants {
+	uint x;
+	uint y;
+	uint z;
+} pc;
 layout(set = 0, binding = 0) uniform params
 {
     uint grid_x;

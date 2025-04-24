@@ -57,6 +57,9 @@ public:
   void run();
 
 private:
+ struct PushConstants {
+    uint32_t x, y, z;
+  };
   VkInstance instance_;
   VkPhysicalDevice physical_device_;
   VkPhysicalDeviceMemoryProperties phys_memory_props_;
@@ -71,7 +74,7 @@ private:
   std::unique_ptr<DeviceBuffer> d_input_buffer_;
   std::unique_ptr<StagingBuffer> output_buffer_;
   std::unique_ptr<DeviceBuffer> d_output_buffer_;
-  std::vector<std::unique_ptr<vk::ComputeShader>> compute_shaders_;
+  std::vector<std::unique_ptr<vk::ComputeShader<PushConstants>>> compute_shaders_;
   std::vector<VkDescriptorSet> descriptorSets_;
 
   bool synchronization2_supported_ = false;
@@ -257,7 +260,7 @@ void Application::initialize() {
 
   std::cout << "==== Create compute shader ====" << std::endl;
   for (size_t i = 0; i < 2; ++i) {
-    compute_shaders_.push_back(std::make_unique<vk::ComputeShader>(
+    compute_shaders_.push_back(std::make_unique<vk::ComputeShader<PushConstants>>(
       device_,
       descriptor_pool_,
       "build/shaders/shader.comp.spv"));
@@ -315,7 +318,8 @@ void Application::run() {
       {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, d_input_buffer_->buffer_},
       {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, d_output_buffer_->buffer_},
     };
-    cs->bind(descriptor_types);
+    PushConstants pc = {static_cast<uint32_t>(i), 1, 2};
+    cs->bind(pc, descriptor_types);
     stream_->dispatch(*cs, n_elements / 32, 1, 1);
     stream_->barrier();
 

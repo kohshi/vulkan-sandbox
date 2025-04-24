@@ -51,6 +51,7 @@ namespace {
 
 namespace vk {
 
+template<typename T>
 struct ComputeShader {
   ComputeShader(VkDevice device,
     VkDescriptorPool descriptor_pool,
@@ -70,7 +71,8 @@ struct ComputeShader {
     }
   }
 
-  void bind(std::vector<std::tuple<VkDescriptorType, VkBuffer>>& args);
+  void bind(T& push_constants,
+    std::vector<std::tuple<VkDescriptorType, VkBuffer>>& args);
 
   VkDevice device_;
   VkDescriptorPool descriptor_pool_;
@@ -79,9 +81,12 @@ struct ComputeShader {
   VkPipelineLayout pipeline_layout_;
   VkPipeline pipeline_;
   std::vector<VkDescriptorSet> descriptor_sets_;
+  VkPushConstantRange push_range_;
+  T push_constants_;
 };
 
-ComputeShader::ComputeShader(VkDevice device,
+template<typename T>
+ComputeShader<T>::ComputeShader(VkDevice device,
   VkDescriptorPool descriptor_pool,
   const char* filename) :
   device_(device),
@@ -102,7 +107,10 @@ ComputeShader::ComputeShader(VkDevice device,
   }
 }
 
-void ComputeShader::bind(std::vector<std::tuple<VkDescriptorType, VkBuffer>>& args) {
+template<typename T>
+void ComputeShader<T>::bind(
+  T& push_constants,
+  std::vector<std::tuple<VkDescriptorType, VkBuffer>>& args) {
 
   // create DescriptorSetLayout and PipelineLayout
   std::vector<VkDescriptorSetLayoutBinding> bindings;
@@ -124,10 +132,17 @@ void ComputeShader::bind(std::vector<std::tuple<VkDescriptorType, VkBuffer>>& ar
   };
   CHK(vkCreateDescriptorSetLayout(device_, &descriptor_set_layout_ci, nullptr, &descriptor_set_layout_));
 
+  push_range_.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+  push_range_.offset = 0;
+  push_range_.size = sizeof(T);
+  push_constants_ = push_constants;
+
   VkPipelineLayoutCreateInfo pipeline_layout_ci{
     .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
     .setLayoutCount = 1,
     .pSetLayouts = &descriptor_set_layout_,
+    .pushConstantRangeCount = 1,
+    .pPushConstantRanges = &push_range_,
   };
   CHK(vkCreatePipelineLayout(device_, &pipeline_layout_ci, nullptr, &pipeline_layout_));
 

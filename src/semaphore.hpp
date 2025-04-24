@@ -16,7 +16,8 @@ struct Stream {
 
   void begin();
   void copy(VkBuffer src, VkBuffer dst, VkDeviceSize size);
-  void dispatch(ComputeShader& cs, uint32_t group_x, uint32_t group_y, uint32_t group_z);
+  template<typename T>
+  void dispatch(ComputeShader<T>& cs, uint32_t group_x, uint32_t group_y, uint32_t group_z);
   void barrier();
   void submit();
   void synchronize();
@@ -89,10 +90,15 @@ void Stream::copy(VkBuffer src, VkBuffer dst, VkDeviceSize size) {
   vkCmdCopyBuffer(current_command_buf_, src, dst, 1, &copy_region);
 }
 
-void Stream::dispatch(ComputeShader& cs, uint32_t group_x, uint32_t group_y, uint32_t group_z) {
+template<typename T>
+void Stream::dispatch(ComputeShader<T>& cs, uint32_t group_x, uint32_t group_y, uint32_t group_z) {
   check();
 
   vkCmdBindPipeline(current_command_buf_, VK_PIPELINE_BIND_POINT_COMPUTE, cs.pipeline_);
+  vkCmdPushConstants(current_command_buf_,
+    cs.pipeline_layout_,
+    VK_SHADER_STAGE_COMPUTE_BIT,
+    0/*offset*/, sizeof(T), &(cs.push_constants_));
   vkCmdBindDescriptorSets(current_command_buf_,
     VK_PIPELINE_BIND_POINT_COMPUTE,
     cs.pipeline_layout_,
