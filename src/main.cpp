@@ -73,7 +73,6 @@ private:
   std::unique_ptr<vk::StagingBuffer> output_buffer_;
   std::unique_ptr<vk::DeviceBuffer> d_output_buffer_;
   std::vector<std::unique_ptr<vk::ComputeShader<PushConstants>>> compute_shaders_;
-  std::vector<VkDescriptorSet> descriptorSets_;
 
   bool synchronization2_supported_ = false;
 };
