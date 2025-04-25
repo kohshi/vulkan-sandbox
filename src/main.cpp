@@ -58,8 +58,6 @@ private:
   vk::DeviceBuffer d_input_buffer_;
   vk::StagingBuffer output_buffer_;
   vk::DeviceBuffer d_output_buffer_;
-
-  bool synchronization2_supported_ = false;
 };
 
 

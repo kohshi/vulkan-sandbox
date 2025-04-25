@@ -2,23 +2,50 @@
 set namespaceSeparator ::
 
 class Application {
-  - VkInstance instance_
-  - VkPhysicalDevice physical_device_
-  - VkPhysicalDeviceMemoryProperties phys_memory_props_
-  - VkDevice device_
-  - VkQueue compute_queue_
-  - VkCommandPool command_pool_
-  - VkDescriptorPool descriptor_pool_
-  - std::unique_ptr<vk::Stream> stream_
-  - std::unique_ptr<vk::UniformBuffer> uniform_buffer_
-  - std::unique_ptr<vk::StagingBuffer> input_buffer_
-  - std::unique_ptr<vk::DeviceBuffer> d_input_buffer_
-  - std::unique_ptr<vk::StagingBuffer> output_buffer_
-  - std::unique_ptr<vk::DeviceBuffer> d_output_buffer_
-  - std::vector<std::unique_ptr<vk::ComputeShader<PushConstants>>> compute_shaders_
-  - bool synchronization2_supported_
-  + initialize()
+  - vk::Instance instance_
+  - vk::PhysicalDevice physical_device_
+  - vk::Device device_
+  - vk::ComputeQueue compute_queue_
+  - vk::CommandPool command_pool_
+  - vk::DescriptorPool descriptor_pool_
+  - vk::Stream stream_
+  - std::array<vk::ComputeShader<PushConstants>, 2> compute_shaders_
+  - vk::UniformBuffer uniform_buffer_
+  - vk::StagingBuffer input_buffer_
+  - vk::DeviceBuffer d_input_buffer_
+  - vk::StagingBuffer output_buffer_
+  - vk::DeviceBuffer d_output_buffer_
   + run()
+}
+
+class vk::Instance {
+  - VkInstance instance_
+}
+
+class vk::PhysicalDevice {
+  - VkPhysicalDevice physical_device_
+  - VkPhysicalDeviceProperties phys_device_prop_
+  - VkPhysicalDeviceMemoryProperties phys_memory_props_
+}
+
+class vk::Device {
+  - VkDevice device_
+  - bool synchronization2_supported_
+  - uint32_t compute_queue_family_index_
+}
+
+struct vk::ComputeQueue {
+  - VkQueue queue_
+}
+
+struct vk::CommandPool {
+  - VkCommandPool command_pool_
+  - VkDevice device_
+}
+
+struct vk::DescriptorPool {
+  - VkDescriptorPool descriptor_pool_
+  - VkDevice device_
 }
 
 struct vk::Stream {
@@ -31,12 +58,6 @@ struct vk::Stream {
   - uint64_t timeline_value_
   - const bool synchronize2_supported_
   - PFN_vkCmdPipelineBarrier2KHR vkCmdPipelineBarrier2KHR_
-  + begin()
-  + copy()
-  + dispatch()
-  + barrier()
-  + submit()
-  + synchronize()
 }
 
 struct vk::ComputeShader<T> {
@@ -49,39 +70,41 @@ struct vk::ComputeShader<T> {
   - std::vector<VkDescriptorSet> descriptor_sets_
   - VkPushConstantRange push_range_
   - T push_constants_
-  + bind()
 }
 
 struct vk::UniformBuffer {
   - VkDevice device_
-  - VkPhysicalDeviceMemoryProperties phys_mem_props_
+  - const VkPhysicalDeviceMemoryProperties phys_mem_props_
   - VkBuffer buffer_
   - VkDeviceMemory memory_
-  + allocate(const size_t size)
   - void* mapped_
 }
 
 struct vk::StagingBuffer {
   - VkDevice device_
-  - VkPhysicalDeviceMemoryProperties phys_mem_props_
+  - const VkPhysicalDeviceMemoryProperties phys_mem_props_
   - VkBuffer buffer_
   - VkDeviceMemory memory_
-  + allocate(const size_t size)
   - void* mapped_
 }
 
 struct vk::DeviceBuffer {
   - VkDevice device_
-  - VkPhysicalDeviceMemoryProperties phys_mem_props_
+  - const VkPhysicalDeviceMemoryProperties phys_mem_props_
   - VkBuffer buffer_
   - VkDeviceMemory memory_
-  + allocate(const size_t size)
 }
 
+Application --> vk::Instance
+Application --> vk::PhysicalDevice
+Application --> vk::Device
+Application --> vk::ComputeQueue
+Application --> vk::CommandPool
+Application --> vk::DescriptorPool
 Application --> vk::Stream
 Application --> vk::ComputeShader
 Application --> vk::UniformBuffer
 Application --> vk::StagingBuffer
 Application --> vk::DeviceBuffer
-vk::Stream --> vk::ComputeShader
+vk::Device --> vk::PhysicalDevice
 @enduml
