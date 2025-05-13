@@ -97,15 +97,15 @@ struct Device {
     vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &n_queue_family_props, nullptr);
     std::vector<VkQueueFamilyProperties> queue_family_props(n_queue_family_props);
     vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &n_queue_family_props, queue_family_props.data());
-    uint32_t compute_queue_family_index = 0;
+    compute_queue_family_index_ = 0;
     uint32_t n_compute_queue = 0;
     for (uint32_t i = 0; i < n_queue_family_props; ++i) {
       if (queue_family_props[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
-        compute_queue_family_index = i;
+        compute_queue_family_index_ = i;
         n_compute_queue = queue_family_props[i].queueCount;
       }
     }
-    std::cout << "computeQueueFamilyIndex: " << compute_queue_family_index << std::endl;
+    std::cout << "computeQueueFamilyIndex: " << compute_queue_family_index_ << std::endl;
     std::cout << "computeQueueCount: " << n_compute_queue << std::endl;
 
     // Get supported extnsions
@@ -138,7 +138,7 @@ struct Device {
 
     VkDeviceQueueCreateInfo device_queue_ci{
       .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-      .queueFamilyIndex = compute_queue_family_index,
+      .queueFamilyIndex = compute_queue_family_index_,
       .queueCount = 1,
       .pQueuePriorities = &queue_priorities,
     };
