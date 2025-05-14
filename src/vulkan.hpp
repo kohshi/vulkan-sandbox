@@ -15,7 +15,7 @@ struct Instance {
       .pApplicationName = "VulkanCompute",      // Application Name
       .pEngineName = "VulkanCompute",            // Application Version
       .engineVersion = VK_MAKE_VERSION(1, 0, 0),    // Engine Version
-      .apiVersion= VK_API_VERSION_1_3    // Vulkan API version
+      .apiVersion= VK_API_VERSION_1_2    // Vulkan API version
     };
   
     VkInstanceCreateInfo instance_ci = {
