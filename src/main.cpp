@@ -79,10 +79,10 @@ void Application::run() {
 
   const VkDeviceSize memory_size = buffer_size;
 
-  input_buffer_ = std::move(vk::StagingBuffer(device_, phys_memory_props, memory_size));
-  output_buffer_ = std::move(vk::StagingBuffer(device_, phys_memory_props, memory_size));
-  d_input_buffer_ = std::move(vk::DeviceBuffer(device_, phys_memory_props, memory_size));
-  d_output_buffer_ = std::move(vk::DeviceBuffer(device_, phys_memory_props, memory_size));
+  input_buffer_ = vk::StagingBuffer(device_, phys_memory_props, memory_size);
+  output_buffer_ = vk::StagingBuffer(device_, phys_memory_props, memory_size);
+  d_input_buffer_ = vk::DeviceBuffer(device_, phys_memory_props, memory_size);
+  d_output_buffer_ = vk::DeviceBuffer(device_, phys_memory_props, memory_size);
 
   // Set input data.
   for (uint32_t i = 0; i < n_elements; ++i) {
