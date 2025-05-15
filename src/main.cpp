@@ -32,9 +32,9 @@ public:
       "build/shaders/shader.comp.spv")
   }},
   uniform_buffer_(device_.device_, physical_device_.phys_memory_props_),
-  input_buffer_(device_.device_, physical_device_.phys_memory_props_),
+  input_buffer_(device_, physical_device_.phys_memory_props_),
   d_input_buffer_(device_.device_, physical_device_.phys_memory_props_),
-  output_buffer_(device_.device_, physical_device_.phys_memory_props_),
+  output_buffer_(device_, physical_device_.phys_memory_props_),
   d_output_buffer_(device_.device_, physical_device_.phys_memory_props_) {}
   ~Application() {}
 
@@ -79,8 +79,8 @@ void Application::run() {
 
   const VkDeviceSize memory_size = buffer_size;
 
-  input_buffer_ = vk::StagingBuffer(device_.device_, phys_memory_props, memory_size);
-  output_buffer_ = vk::StagingBuffer(device_.device_, phys_memory_props, memory_size);
+  input_buffer_ = vk::StagingBuffer(device_, phys_memory_props, memory_size);
+  output_buffer_ = vk::StagingBuffer(device_, phys_memory_props, memory_size);
   d_input_buffer_ = vk::DeviceBuffer(device_.device_, phys_memory_props, memory_size);
   d_output_buffer_ = vk::DeviceBuffer(device_.device_, phys_memory_props, memory_size);
 
