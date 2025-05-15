@@ -56,6 +56,11 @@ struct ComputeShader {
   ComputeShader(VkDevice device,
     VkDescriptorPool descriptor_pool,
     const char* filename);
+  ComputeShader() = delete;
+  ComputeShader(const ComputeShader&) = delete;
+  ComputeShader& operator=(const ComputeShader&) = delete;
+  ComputeShader(ComputeShader&& s) = delete;
+  ComputeShader& operator=(ComputeShader&& s) = delete;
   ~ComputeShader() {
     if (pipeline_ != VK_NULL_HANDLE) {
       vkDestroyPipeline(device_, pipeline_, nullptr);
