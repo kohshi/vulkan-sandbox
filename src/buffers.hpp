@@ -25,7 +25,7 @@ uint32_t findMemoryType(const VkPhysicalDeviceMemoryProperties& props,
   return memory_types_index;
 }
 
-VkResult createBuffer(VkDevice &device, 
+VkResult createBuffer(VkDevice device, 
   const VkPhysicalDeviceMemoryProperties& phys_mem_props,
   const VkDeviceSize buffer_size,
   const VkBufferUsageFlags usage,
@@ -63,10 +63,10 @@ VkResult createBuffer(VkDevice &device,
 
 struct StagingBuffer
 {
-  StagingBuffer(VkDevice device,
+  StagingBuffer(Device& device,
                 const VkPhysicalDeviceMemoryProperties& props,
                 const size_t size = 0) :
-  device_(device),
+  device_(&device),
   phys_mem_props_(props) {
     CHK(allocate(size));
   }
@@ -79,7 +79,7 @@ struct StagingBuffer
   buffer_(s.buffer_),
   memory_(s.memory_),
   mapped_(s.mapped_) {
-    s.device_  = VK_NULL_HANDLE;
+    s.device_  = nullptr;
     s.buffer_ = VK_NULL_HANDLE;
     s.memory_ = VK_NULL_HANDLE;
     s.mapped_ = nullptr;
@@ -90,26 +90,28 @@ struct StagingBuffer
     buffer_ = s.buffer_;
     memory_ = s.memory_;
     mapped_ = s.mapped_;
-    s.device_  = VK_NULL_HANDLE;
+    s.device_  = nullptr;
     s.buffer_ = VK_NULL_HANDLE;
     s.memory_ = VK_NULL_HANDLE;
     s.mapped_ = nullptr;
     return *this;
   }
   ~StagingBuffer() {
+    if (device_ == nullptr) return;
+    VkDevice vkd = device_->device_;
     if (mapped_ != nullptr) {
-      vkUnmapMemory(device_, memory_);
+      vkUnmapMemory(vkd, memory_);
       mapped_ = nullptr;
     }
     if (buffer_ != VK_NULL_HANDLE) {
-      vkDestroyBuffer(device_, buffer_, nullptr);
+      vkDestroyBuffer(vkd, buffer_, nullptr);
     }
     if (memory_ != VK_NULL_HANDLE) {
-      vkFreeMemory(device_, memory_, nullptr);
+      vkFreeMemory(vkd, memory_, nullptr);
     }
   }
 
-  VkDevice device_;
+  Device* device_;
   const VkPhysicalDeviceMemoryProperties phys_mem_props_;
   VkBuffer buffer_;
   VkDeviceMemory memory_;
@@ -126,6 +128,7 @@ VkResult StagingBuffer::allocate(const size_t size) {
     mapped_ = nullptr;
     return VK_SUCCESS;
   }
+  VkDevice vkd = device_->device_;
   VkBufferUsageFlags usage =
     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
     VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
@@ -133,11 +136,11 @@ VkResult StagingBuffer::allocate(const size_t size) {
   VkMemoryPropertyFlags props =
     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-  createBuffer(device_, phys_mem_props_,
+  createBuffer(vkd, phys_mem_props_,
     size, usage, props,
     buffer_, memory_);
   // Map the buffer memory
-  CHK(vkMapMemory(device_, memory_, 0/*offset*/, size, 0/*flags*/, &mapped_));
+  CHK(vkMapMemory(vkd, memory_, 0/*offset*/, size, 0/*flags*/, &mapped_));
   return VK_SUCCESS;
 }
 
