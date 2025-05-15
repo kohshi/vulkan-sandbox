@@ -24,7 +24,7 @@ public:
   compute_queue_(device_),
   command_pool_(device_),
   descriptor_pool_(device_, 100),
-  stream_(device_.device_, compute_queue_.queue_, command_pool_.command_pool_),
+  stream_(device_, compute_queue_, command_pool_),
   compute_shaders_{{
     vk::ComputeShader<PushConstants>(device_.device_, descriptor_pool_,
       "build/shaders/shader.comp.spv"),
