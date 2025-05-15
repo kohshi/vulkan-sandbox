@@ -46,21 +46,25 @@ struct Instance {
           VK_VERSION_MINOR(version) << "." <<
           VK_VERSION_PATCH(version) << std::endl;
   }
+  Instance(const Instance&) = delete;
+  Instance& operator=(const Instance&) = delete;
+  Instance(Instance&& s) = delete;
+  Instance& operator=(Instance&& s) = delete;
   ~Instance(){
     vkDestroyInstance(instance_, nullptr);
   }
-  operator VkInstance() { return instance_; }
   
   VkInstance instance_;
 };
 
 struct PhysicalDevice {
-  PhysicalDevice(VkInstance instance, const int gpu_idx = 0) {
+  PhysicalDevice(Instance& instance, const int gpu_idx = 0) {
     uint32_t n_phys_dev = 0;
-    CHK(vkEnumeratePhysicalDevices(instance, &n_phys_dev, nullptr));
+    VkInstance vki = instance.instance_;
+    CHK(vkEnumeratePhysicalDevices(vki, &n_phys_dev, nullptr));
     std::vector<VkPhysicalDevice> phys_devs(n_phys_dev);
     std::vector<VkPhysicalDeviceProperties> props(n_phys_dev);
-    CHK(vkEnumeratePhysicalDevices(instance, &n_phys_dev, phys_devs.data()));
+    CHK(vkEnumeratePhysicalDevices(vki, &n_phys_dev, phys_devs.data()));
     for (uint32_t i = 0; i < n_phys_dev; ++i) {
       vkGetPhysicalDeviceProperties(phys_devs[i], &props[i]);
       std::cout << "GPU " << i << ": " << props[i].deviceName << " "
@@ -82,8 +86,12 @@ struct PhysicalDevice {
 
     vkGetPhysicalDeviceMemoryProperties(physical_device_, &phys_memory_props_);
   }
+  PhysicalDevice() = delete;
+  PhysicalDevice(const PhysicalDevice&) = delete;
+  PhysicalDevice& operator=(const PhysicalDevice&) = delete;
+  PhysicalDevice(PhysicalDevice&& s) = delete;
+  PhysicalDevice& operator=(PhysicalDevice&& s) = delete;
   ~PhysicalDevice() = default;
-  operator VkPhysicalDevice() { return physical_device_; }
   
   VkPhysicalDevice physical_device_;
   VkPhysicalDeviceProperties phys_device_prop_;
@@ -91,13 +99,14 @@ struct PhysicalDevice {
 };
 
 struct Device {
-  Device(VkPhysicalDevice physical_device) {
+  Device(PhysicalDevice& physical_device) {
     // Get queue family properties
     uint32_t n_queue_family_props = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &n_queue_family_props, nullptr);
+    VkPhysicalDevice vkpd = physical_device.physical_device_;
+    vkGetPhysicalDeviceQueueFamilyProperties(vkpd, &n_queue_family_props, nullptr);
     std::vector<VkQueueFamilyProperties> queue_family_props(n_queue_family_props);
-    vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &n_queue_family_props, queue_family_props.data());
-    uint32_t compute_queue_family_index = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(vkpd, &n_queue_family_props, queue_family_props.data());
+    compute_queue_family_index_ = 0;
     uint32_t n_compute_queue = 0;
     for (uint32_t i = 0; i < n_queue_family_props; ++i) {
       if (queue_family_props[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
@@ -110,9 +119,9 @@ struct Device {
 
     // Get supported extnsions
     uint32_t n_extensions = 0;
-    vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &n_extensions, nullptr);
+    vkEnumerateDeviceExtensionProperties(vkpd, nullptr, &n_extensions, nullptr);
     std::vector<VkExtensionProperties> supported_exts(n_extensions);
-    vkEnumerateDeviceExtensionProperties(physical_device, nullptr, &n_extensions, supported_exts.data());
+    vkEnumerateDeviceExtensionProperties(vkpd, nullptr, &n_extensions, supported_exts.data());
 
     synchronization2_supported_ = false;
     for (const auto& ext : supported_exts) {
@@ -151,12 +160,16 @@ struct Device {
       .ppEnabledExtensionNames = extensions.data(),
     };
 
-    CHK(vkCreateDevice(physical_device, &device_ci, nullptr, &device_));
+    CHK(vkCreateDevice(vkpd, &device_ci, nullptr, &device_));
   }
+  Device() = delete;
+  Device(const Device&) = delete;
+  Device& operator=(const Device&) = delete;
+  Device(Device&& s) = delete;
+  Device& operator=(Device&& s) = delete;
   ~Device() {
     vkDestroyDevice(device_, nullptr);
   }
-  operator VkDevice() { return device_; }
   
   VkDevice device_;
   bool synchronization2_supported_;
@@ -164,36 +177,44 @@ struct Device {
 };
 
 struct ComputeQueue {
-  ComputeQueue(VkDevice device, const uint32_t compute_queue_family_index) {
-    vkGetDeviceQueue(device, compute_queue_family_index, 0/*queueIndex*/, &queue_);
+  ComputeQueue(Device& device) {
+    vkGetDeviceQueue(device.device_, device.compute_queue_family_index_, 0/*queueIndex*/, &queue_);
   };
+  ComputeQueue() = delete;
+  ComputeQueue(const ComputeQueue&) = delete;
+  ComputeQueue& operator=(const ComputeQueue&) = delete;
+  ComputeQueue(ComputeQueue&& s) = delete;
+  ComputeQueue& operator=(ComputeQueue&& s) = delete;
   ~ComputeQueue() = default;
-  operator VkQueue() { return queue_; }
   
   VkQueue queue_;
 };
 
 struct CommandPool {
-  CommandPool(VkDevice device, const uint32_t compute_queue_family_index):
+  CommandPool(Device& device):
   device_(device) {
     VkCommandPoolCreateInfo command_pool_ci{
       .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
       .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-      .queueFamilyIndex = compute_queue_family_index,
+      .queueFamilyIndex = device_.compute_queue_family_index_,
     };
-    CHK(vkCreateCommandPool(device_, &command_pool_ci, nullptr, &command_pool_));
+    CHK(vkCreateCommandPool(device_.device_, &command_pool_ci, nullptr, &command_pool_));
   }
+  CommandPool() = delete;
+  CommandPool(const CommandPool&) = delete;
+  CommandPool& operator=(const CommandPool&) = delete;
+  CommandPool(CommandPool&& s) = delete;
+  CommandPool& operator=(CommandPool&& s) = delete;
   ~CommandPool() {
-    vkDestroyCommandPool(device_, command_pool_, nullptr);
+    vkDestroyCommandPool(device_.device_, command_pool_, nullptr);
   }
-  operator VkCommandPool() { return command_pool_; }
   
   VkCommandPool command_pool_;
-  VkDevice device_;
+  Device& device_;
 };
 
 struct DescriptorPool {
-  DescriptorPool(VkDevice device, const uint32_t n_descriptor):
+  DescriptorPool(Device& device, const uint32_t n_descriptor):
   device_(device) {
     // A descriptor pool holds a sufficient 
     // number of descriptors to be used by the application, 
@@ -214,15 +235,20 @@ struct DescriptorPool {
       .poolSizeCount = uint32_t(pool_sizes.size()),
       .pPoolSizes = pool_sizes.data(),
     };
-    CHK(vkCreateDescriptorPool(device_, &descriptor_pool_ci, nullptr, &descriptor_pool_));
+    CHK(vkCreateDescriptorPool(device_.device_, &descriptor_pool_ci, nullptr, &descriptor_pool_));
   }
+  DescriptorPool() = delete;
+  DescriptorPool(const DescriptorPool&) = delete;
+  DescriptorPool& operator=(const DescriptorPool&) = delete;
+  DescriptorPool(DescriptorPool&& s) = delete;
+  DescriptorPool& operator=(DescriptorPool&& s) = delete;
   ~DescriptorPool() {
-    vkDestroyDescriptorPool(device_, descriptor_pool_, nullptr);
+    vkDestroyDescriptorPool(device_.device_, descriptor_pool_, nullptr);
   }
   operator VkDescriptorPool() { return descriptor_pool_; }
   
   VkDescriptorPool descriptor_pool_;
-  VkDevice device_;
+  Device& device_;
 };
 
 };// namespace vk
