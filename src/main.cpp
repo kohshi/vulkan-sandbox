@@ -26,9 +26,9 @@ public:
   descriptor_pool_(device_, 100),
   stream_(device_, compute_queue_, command_pool_),
   compute_shaders_{{
-    vk::ComputeShader<PushConstants>(device_.device_, descriptor_pool_,
+    vk::ComputeShader<PushConstants>(device_, descriptor_pool_,
       "build/shaders/shader.comp.spv"),
-    vk::ComputeShader<PushConstants>(device_.device_, descriptor_pool_,
+    vk::ComputeShader<PushConstants>(device_, descriptor_pool_,
       "build/shaders/shader.comp.spv")
   }},
   uniform_buffer_(device_.device_, physical_device_.phys_memory_props_),

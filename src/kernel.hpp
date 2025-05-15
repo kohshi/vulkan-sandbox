@@ -53,8 +53,8 @@ namespace vk {
 
 template<typename T>
 struct ComputeShader {
-  ComputeShader(VkDevice device,
-    VkDescriptorPool descriptor_pool,
+  ComputeShader(Device& device,
+    DescriptorPool& descriptor_pool,
     const char* filename);
   ComputeShader() = delete;
   ComputeShader(const ComputeShader&) = delete;
@@ -62,25 +62,26 @@ struct ComputeShader {
   ComputeShader(ComputeShader&& s) = delete;
   ComputeShader& operator=(ComputeShader&& s) = delete;
   ~ComputeShader() {
+    VkDevice vkd = device_.device_;
     if (pipeline_ != VK_NULL_HANDLE) {
-      vkDestroyPipeline(device_, pipeline_, nullptr);
+      vkDestroyPipeline(vkd, pipeline_, nullptr);
     }
     if (pipeline_layout_ != VK_NULL_HANDLE) {
-      vkDestroyPipelineLayout(device_, pipeline_layout_, nullptr);
+      vkDestroyPipelineLayout(vkd, pipeline_layout_, nullptr);
     }
     if (descriptor_set_layout_ != VK_NULL_HANDLE) {
-      vkDestroyDescriptorSetLayout(device_, descriptor_set_layout_, nullptr);
+      vkDestroyDescriptorSetLayout(vkd, descriptor_set_layout_, nullptr);
     }
     if (shader_module_ != VK_NULL_HANDLE) {
-      vkDestroyShaderModule(device_, shader_module_, nullptr);
+      vkDestroyShaderModule(vkd, shader_module_, nullptr);
     }
   }
 
   void bind(T& push_constants,
     std::vector<std::tuple<VkDescriptorType, VkBuffer>>& args);
 
-  VkDevice device_;
-  VkDescriptorPool descriptor_pool_;
+  Device& device_;
+  DescriptorPool& descriptor_pool_;
   VkShaderModule shader_module_;
   VkDescriptorSetLayout descriptor_set_layout_;
   VkPipelineLayout pipeline_layout_;
@@ -91,8 +92,8 @@ struct ComputeShader {
 };
 
 template<typename T>
-ComputeShader<T>::ComputeShader(VkDevice device,
-  VkDescriptorPool descriptor_pool,
+ComputeShader<T>::ComputeShader(Device& device,
+  DescriptorPool& descriptor_pool,
   const char* filename) :
   device_(device),
   descriptor_pool_(descriptor_pool),
@@ -106,7 +107,7 @@ ComputeShader<T>::ComputeShader(VkDevice device,
     std::cerr << "Failed to load shader: " << filename << std::endl;
     return;
   }
-  shader_module_ = create_shader_module(device_, compute_spv.data(), compute_spv.size());
+  shader_module_ = create_shader_module(device_.device_, compute_spv.data(), compute_spv.size());
   if (shader_module_ == VK_NULL_HANDLE) {
     std::cerr << "Failed to create shader module" << std::endl;
   }
@@ -117,6 +118,7 @@ void ComputeShader<T>::bind(
   T& push_constants,
   std::vector<std::tuple<VkDescriptorType, VkBuffer>>& args) {
 
+  VkDevice vkd = device_.device_;
   // create DescriptorSetLayout and PipelineLayout
   std::vector<VkDescriptorSetLayoutBinding> bindings;
   bindings.reserve(args.size());
@@ -135,7 +137,7 @@ void ComputeShader<T>::bind(
     .bindingCount = uint32_t(bindings.size()),
     .pBindings = bindings.data(),
   };
-  CHK(vkCreateDescriptorSetLayout(device_, &descriptor_set_layout_ci, nullptr, &descriptor_set_layout_));
+  CHK(vkCreateDescriptorSetLayout(vkd, &descriptor_set_layout_ci, nullptr, &descriptor_set_layout_));
 
   push_range_.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
   push_range_.offset = 0;
@@ -149,7 +151,7 @@ void ComputeShader<T>::bind(
     .pushConstantRangeCount = 1,
     .pPushConstantRanges = &push_range_,
   };
-  CHK(vkCreatePipelineLayout(device_, &pipeline_layout_ci, nullptr, &pipeline_layout_));
+  CHK(vkCreatePipelineLayout(vkd, &pipeline_layout_ci, nullptr, &pipeline_layout_));
 
   // Create Pipeline
   VkPipelineShaderStageCreateInfo compute_stage_ci {
@@ -164,7 +166,7 @@ void ComputeShader<T>::bind(
     .layout = pipeline_layout_,
   };
 
-  CHK(vkCreateComputePipelines(device_, VK_NULL_HANDLE, 1, &compute_pipeline_ci, nullptr, &pipeline_));
+  CHK(vkCreateComputePipelines(vkd, VK_NULL_HANDLE, 1, &compute_pipeline_ci, nullptr, &pipeline_));
 
   // Update DescriptorSet
   std::vector<VkDescriptorSetLayout> ds_layouts{descriptor_set_layout_};
@@ -176,7 +178,7 @@ void ComputeShader<T>::bind(
   };
 
   descriptor_sets_.resize(ds_layouts.size());
-  CHK(vkAllocateDescriptorSets(device_, &descriptor_set_ai, descriptor_sets_.data()));
+  CHK(vkAllocateDescriptorSets(vkd, &descriptor_set_ai, descriptor_sets_.data()));
 
   std::vector<VkDescriptorBufferInfo> buffer_infos;
   std::vector<VkWriteDescriptorSet> write_descriptor_sets;
@@ -199,7 +201,7 @@ void ComputeShader<T>::bind(
     };
     write_descriptor_sets.push_back(write_descriptor_set);
   };
-  vkUpdateDescriptorSets(device_, uint32_t(write_descriptor_sets.size()), write_descriptor_sets.data(), 0, nullptr);
+  vkUpdateDescriptorSets(vkd, uint32_t(write_descriptor_sets.size()), write_descriptor_sets.data(), 0, nullptr);
 }
 
 }
