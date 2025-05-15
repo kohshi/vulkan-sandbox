@@ -21,21 +21,21 @@ public:
   instance_(),
   physical_device_(instance_),
   device_(physical_device_),
-  compute_queue_(device_, device_.compute_queue_family_index_),
-  command_pool_(device_, device_.compute_queue_family_index_),
+  compute_queue_(device_),
+  command_pool_(device_),
   descriptor_pool_(device_, 100),
-  stream_(device_, compute_queue_, command_pool_),
+  stream_(device_.device_, compute_queue_.queue_, command_pool_.command_pool_),
   compute_shaders_{{
-    vk::ComputeShader<PushConstants>(device_, descriptor_pool_,
+    vk::ComputeShader<PushConstants>(device_.device_, descriptor_pool_,
       "build/shaders/shader.comp.spv"),
-    vk::ComputeShader<PushConstants>(device_, descriptor_pool_,
+    vk::ComputeShader<PushConstants>(device_.device_, descriptor_pool_,
       "build/shaders/shader.comp.spv")
   }},
-  uniform_buffer_(device_, physical_device_.phys_memory_props_),
-  input_buffer_(device_, physical_device_.phys_memory_props_),
-  d_input_buffer_(device_, physical_device_.phys_memory_props_),
-  output_buffer_(device_, physical_device_.phys_memory_props_),
-  d_output_buffer_(device_, physical_device_.phys_memory_props_) {}
+  uniform_buffer_(device_.device_, physical_device_.phys_memory_props_),
+  input_buffer_(device_.device_, physical_device_.phys_memory_props_),
+  d_input_buffer_(device_.device_, physical_device_.phys_memory_props_),
+  output_buffer_(device_.device_, physical_device_.phys_memory_props_),
+  d_output_buffer_(device_.device_, physical_device_.phys_memory_props_) {}
   ~Application() {}
 
   void run();
@@ -72,7 +72,7 @@ void Application::run() {
   };
   params grid = { 1, 2, 4 };
   const VkPhysicalDeviceMemoryProperties& phys_memory_props = physical_device_.phys_memory_props_;
-  uniform_buffer_ = std::move(vk::UniformBuffer(device_, phys_memory_props, sizeof(params)));
+  uniform_buffer_ = std::move(vk::UniformBuffer(device_.device_, phys_memory_props, sizeof(params)));
   memcpy(uniform_buffer_.mapped_, &grid, sizeof(params));
   
   // Allocate input and output buffers
@@ -81,10 +81,10 @@ void Application::run() {
 
   const VkDeviceSize memory_size = buffer_size;
 
-  input_buffer_ = vk::StagingBuffer(device_, phys_memory_props, memory_size);
-  output_buffer_ = vk::StagingBuffer(device_, phys_memory_props, memory_size);
-  d_input_buffer_ = vk::DeviceBuffer(device_, phys_memory_props, memory_size);
-  d_output_buffer_ = vk::DeviceBuffer(device_, phys_memory_props, memory_size);
+  input_buffer_ = vk::StagingBuffer(device_.device_, phys_memory_props, memory_size);
+  output_buffer_ = vk::StagingBuffer(device_.device_, phys_memory_props, memory_size);
+  d_input_buffer_ = vk::DeviceBuffer(device_.device_, phys_memory_props, memory_size);
+  d_output_buffer_ = vk::DeviceBuffer(device_.device_, phys_memory_props, memory_size);
 
   // Set input data.
   for (uint32_t i = 0; i < n_elements; ++i) {
