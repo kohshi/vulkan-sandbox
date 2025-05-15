@@ -8,6 +8,11 @@ namespace vk {
 
 struct Stream {
   Stream(VkDevice device, VkQueue queue, VkCommandPool command_pool);
+  Stream() = delete;
+  Stream(const Stream&) = delete;
+  Stream& operator=(const Stream&) = delete;
+  Stream(Stream&& s) = delete;
+  Stream& operator=(Stream&& s) = delete;
   ~Stream() {
     if (timeline_semaphore_ != VK_NULL_HANDLE) {
       vkDestroySemaphore(device_, timeline_semaphore_, nullptr);
