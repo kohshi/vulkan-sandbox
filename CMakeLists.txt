@@ -9,10 +9,13 @@ project(
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "-Wall -g")
 
+list(APPEND CMAKE_PREFIX_PATH "${CMAKE_SOURCE_DIR}/src/ext")
 
 # Find Vulkan
 find_package(Vulkan REQUIRED)
 
+# Find VMA
+find_package(VulkanMemoryAllocator REQUIRED)
 
 #######################################################################
 #                               SHADERS                               #
@@ -84,7 +87,7 @@ add_custom_target(compile-shaders ALL DEPENDS ${SPV_SHADERS})
 #######################################################################
 
 # Add the executable
-add_executable(main src/main.cpp)
+add_executable(main src/main.cpp src/vma.cpp)
 add_dependencies(main compile-shaders)
 
 # Add the binary tree to the search path for include files
@@ -96,4 +99,4 @@ target_include_directories(main PUBLIC
 
 target_link_libraries(main PUBLIC
 	${Vulkan_LIBRARIES}
-	)
+  GPUOpen::VulkanMemoryAllocator)

@@ -20,7 +20,7 @@ public:
   Application() :
   instance_(),
   physical_device_(instance_),
-  device_(physical_device_),
+  device_(instance_, physical_device_),
   compute_queue_(device_),
   command_pool_(device_),
   descriptor_pool_(device_, 100),
@@ -31,11 +31,11 @@ public:
     vk::ComputeShader<PushConstants>(device_, descriptor_pool_,
       "build/shaders/shader.comp.spv")
   }},
-  uniform_buffer_(device_, physical_device_.phys_memory_props_),
-  input_buffer_(device_, physical_device_.phys_memory_props_),
-  d_input_buffer_(device_, physical_device_.phys_memory_props_),
-  output_buffer_(device_, physical_device_.phys_memory_props_),
-  d_output_buffer_(device_, physical_device_.phys_memory_props_) {}
+  uniform_buffer_(device_),
+  input_buffer_(device_),
+  d_input_buffer_(device_),
+  output_buffer_(device_),
+  d_output_buffer_(device_) {}
   ~Application() {}
 
   void run();
@@ -71,8 +71,7 @@ void Application::run() {
     uint32_t x, y, z;
   };
   params grid = { 1, 2, 4 };
-  const VkPhysicalDeviceMemoryProperties& phys_memory_props = physical_device_.phys_memory_props_;
-  uniform_buffer_ = vk::UniformBuffer(device_, phys_memory_props, sizeof(params));
+  uniform_buffer_ = vk::UniformBuffer(device_, sizeof(params));
   memcpy(uniform_buffer_.mapped_, &grid, sizeof(params));
   
   // Allocate input and output buffers
@@ -81,10 +80,10 @@ void Application::run() {
 
   const VkDeviceSize memory_size = buffer_size;
 
-  input_buffer_ = vk::StagingBuffer(device_, phys_memory_props, memory_size);
-  output_buffer_ = vk::StagingBuffer(device_, phys_memory_props, memory_size);
-  d_input_buffer_ = vk::DeviceBuffer(device_, phys_memory_props, memory_size);
-  d_output_buffer_ = vk::DeviceBuffer(device_, phys_memory_props, memory_size);
+  input_buffer_ = vk::StagingBuffer(device_, memory_size);
+  output_buffer_ = vk::StagingBuffer(device_, memory_size);
+  d_input_buffer_ = vk::DeviceBuffer(device_, memory_size);
+  d_output_buffer_ = vk::DeviceBuffer(device_, memory_size);
 
   // Set input data.
   for (uint32_t i = 0; i < n_elements; ++i) {

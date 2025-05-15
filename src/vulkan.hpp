@@ -6,8 +6,10 @@
 #include <cstring>
 
 #include "vulkan_utils.hpp"
+#include "vk_mem_alloc.h"
 
 namespace vk {
+
 struct Instance {
   Instance(const bool enable_validation = false){
     const VkApplicationInfo appInfo = {
@@ -99,7 +101,7 @@ struct PhysicalDevice {
 };
 
 struct Device {
-  Device(PhysicalDevice& physical_device) {
+  Device(Instance& instance, PhysicalDevice& physical_device) {
     // Get queue family properties
     uint32_t n_queue_family_props = 0;
     VkPhysicalDevice vkpd = physical_device.physical_device_;
@@ -161,6 +163,14 @@ struct Device {
     };
 
     CHK(vkCreateDevice(vkpd, &device_ci, nullptr, &device_));
+
+    const VmaAllocatorCreateInfo allocator_info = {
+      .physicalDevice = vkpd,
+      .device = device_,
+      .instance = instance.instance_,
+      .vulkanApiVersion = VK_API_VERSION_1_2,
+    };
+    CHK(vmaCreateAllocator(&allocator_info, &allocator_));
   }
   Device() = delete;
   Device(const Device&) = delete;
@@ -168,12 +178,14 @@ struct Device {
   Device(Device&& s) = delete;
   Device& operator=(Device&& s) = delete;
   ~Device() {
+    vmaDestroyAllocator(allocator_);
     vkDestroyDevice(device_, nullptr);
   }
   
   VkDevice device_;
   bool synchronization2_supported_;
   uint32_t compute_queue_family_index_;
+  VmaAllocator allocator_;
 };
 
 struct ComputeQueue {
