@@ -4,7 +4,7 @@ project(
     vulkan-sandbox
     VERSION 0.0.1
 	DESCRIPTION "A minimal application with Vulkan Compute Shaders"
-    LANGUAGES CXX)
+    LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "-Wall -g")
@@ -16,6 +16,9 @@ find_package(Vulkan REQUIRED)
 
 # Find VMA
 find_package(VulkanMemoryAllocator REQUIRED)
+
+# Find CUDA
+find_package(CUDAToolkit REQUIRED)
 
 #######################################################################
 #                               SHADERS                               #
@@ -87,16 +90,36 @@ add_custom_target(compile-shaders ALL DEPENDS ${SPV_SHADERS})
 #######################################################################
 
 # Add the executable
-add_executable(main src/exec/main.cpp src/vulkan/vma.cpp)
+add_executable(main
+               "${PROJECT_SOURCE_DIR}/src/exec/main.cpp"
+               "${PROJECT_SOURCE_DIR}/src/vulkan/vma.cpp")
 add_dependencies(main compile-shaders)
 
 # Add the binary tree to the search path for include files
 target_include_directories(main PUBLIC
-	"${PROJECT_BINARY_DIR}"
-	"${PROJECT_SOURCE_DIR}/src/vulkan"
+	"${PROJECT_SOURCE_DIR}/src"
 	${Vulkan_INCLUDE_DIRS}
 	)
 
 target_link_libraries(main PUBLIC
 	${Vulkan_LIBRARIES}
+  GPUOpen::VulkanMemoryAllocator)
+
+add_library(cuda_kernels STATIC "${PROJECT_SOURCE_DIR}/src/cuda/kernel.cu")
+set_target_properties(cuda_kernels PROPERTIES CUDA_ARCHITECTURES native)
+target_link_libraries(cuda_kernels PUBLIC CUDA::cudart)
+target_include_directories(cuda_kernels PUBLIC "${PROJECT_SOURCE_DIR}/src")
+
+add_executable(cuda_interop
+              "${PROJECT_SOURCE_DIR}/src/exec/cuda_interop.cpp"
+              "${PROJECT_SOURCE_DIR}/src/vulkan/vma.cpp")
+
+target_include_directories(cuda_interop PUBLIC
+  "${PROJECT_SOURCE_DIR}/src"
+  ${Vulkan_INCLUDE_DIRS}
+  )
+
+target_link_libraries(cuda_interop PUBLIC
+  cuda_kernels
+  ${Vulkan_LIBRARIES}
   GPUOpen::VulkanMemoryAllocator)

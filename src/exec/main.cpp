@@ -1,11 +1,9 @@
-#include "vulkan.hpp"
-#include "buffers.hpp"
-#include "stream.hpp"
-#include "kernel.hpp"
-#include "vulkan_utils.hpp"
+#include "vulkan/vulkan.hpp"
+#include "vulkan/buffers.hpp"
+#include "vulkan/stream.hpp"
+#include "vulkan/kernel.hpp"
+#include "vulkan/vulkan_utils.hpp"
 
-#include <vulkan/vulkan.h>
-#include <vulkan/vulkan_core.h>
 #include <vector>
 #include <array>
 #include <iostream>
