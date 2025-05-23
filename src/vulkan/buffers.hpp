@@ -5,6 +5,8 @@
 
 #include "vk_mem_alloc.h"
 
+#include <cassert>
+
 namespace vk {
 
 namespace {
@@ -27,6 +29,35 @@ VkResult createBuffer(VmaAllocator allocator,
     .flags = alloc_flags,
     .usage = VMA_MEMORY_USAGE_AUTO,
     .requiredFlags = prop_flags,
+  };
+  CHK(vmaCreateBuffer(allocator, &buffer_ci, &vma_alloc_ci, &buffer, &allocation, nullptr));
+  return VK_SUCCESS;
+}
+
+VkResult createExportDeviceBuffer(VmaAllocator allocator,
+  const VkDeviceSize buffer_size,
+  VkBuffer& buffer,
+  VmaAllocation& allocation)
+{
+  VkBufferUsageFlags usage =
+    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+    VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+  VkExternalMemoryBufferCreateInfo external_memory_ci{
+    .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO,
+    .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
+  };
+
+  VkBufferCreateInfo buffer_ci{
+    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+    .pNext = &external_memory_ci,
+    .size = buffer_size,
+    .usage = usage,
+    .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+  };
+
+  VmaAllocationCreateInfo vma_alloc_ci{
+    .usage = VMA_MEMORY_USAGE_GPU_ONLY,
+    .requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
   };
   CHK(vmaCreateBuffer(allocator, &buffer_ci, &vma_alloc_ci, &buffer, &allocation, nullptr));
   return VK_SUCCESS;
@@ -134,28 +165,33 @@ struct DeviceBuffer
   DeviceBuffer(DeviceBuffer&& s) :
   device_(s.device_),
   buffer_(s.buffer_),
-  allocation_(s.allocation_) {
+  allocation_(s.allocation_),
+  fd_(s.fd_) {
     s.device_  = nullptr;
     s.buffer_ = VK_NULL_HANDLE;
     s.allocation_ = VK_NULL_HANDLE;
+    s.fd_ = -1;
   }
   DeviceBuffer& operator=(DeviceBuffer&& s) {
     if (&s == this) return *this;
     device_ = s.device_;
     buffer_ = s.buffer_;
     allocation_ = s.allocation_;
+    fd_ = s.fd_;
     s.device_  = nullptr;
     s.buffer_ = VK_NULL_HANDLE;
     s.allocation_ = VK_NULL_HANDLE;
+    s.fd_ = -1;
     return *this;
   }
-  ~DeviceBuffer() {
+  virtual ~DeviceBuffer() {
     free();
   }
 
   Device* device_;
   VkBuffer buffer_;
   VmaAllocation allocation_;
+  int fd_ = -1;
 private:
   void free();
   VkResult allocate(const size_t size);
@@ -179,19 +215,25 @@ VkResult DeviceBuffer::allocate(const size_t size) {
   }
 
   VmaAllocator allocator = device_->allocator_;
-  VkBufferUsageFlags usage =
-    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-    VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-    VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-  VkMemoryPropertyFlags props =
-    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-  VmaAllocationCreateFlags alloc_flags = 0;
-  createBuffer(allocator,
-    size, usage, props,
-    alloc_flags,
+  // VkMemoryPropertyFlags props =
+  //   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+  // VmaAllocationCreateFlags alloc_flags = 0;
+  createExportDeviceBuffer(allocator,
+    size,
     buffer_, allocation_);
+
+  VmaAllocationInfo alloc_info;
+  vmaGetAllocationInfo(allocator, allocation_, &alloc_info);
+  VkMemoryGetFdInfoKHR get_fd_info{
+    .sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR,
+    .memory = alloc_info.deviceMemory,
+    .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
+  };
+  CHK(device_->vkGetMemoryFdKHR_(device_->device_, &get_fd_info, &fd_));
+  assert(fd_ > 0);
   return VK_SUCCESS;
 }
+
 
 struct UniformBuffer
 {

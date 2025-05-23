@@ -29,6 +29,7 @@ struct Instance {
     std::vector<const char*> extensions;
     
     layers.push_back("VK_LAYER_KHRONOS_synchronization2");
+    extensions.push_back(VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
     if (enable_validation) {
       layers.push_back("VK_LAYER_KHRONOS_validation");
       extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);  
@@ -87,6 +88,11 @@ struct PhysicalDevice {
     std::cout << "maxSamplerAllocationCount: " << limits.maxSamplerAllocationCount << std::endl;
 
     vkGetPhysicalDeviceMemoryProperties(physical_device_, &phys_memory_props_);
+
+    for (uint32_t i = 0; i < phys_memory_props_.memoryTypeCount; ++i) {
+      std::cout << "Memory type " << i << ": " << phys_memory_props_.memoryTypes[i].heapIndex << std::endl;
+      std::cout << "  propertyFlags: " << std::hex << phys_memory_props_.memoryTypes[i].propertyFlags << std::dec << std::endl;
+    }
   }
   PhysicalDevice() = delete;
   PhysicalDevice(const PhysicalDevice&) = delete;
@@ -131,6 +137,9 @@ struct Device {
           synchronization2_supported_ = true;
             break;
         }
+        if (std::strcmp(ext.extensionName, VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME) == 0) {
+          std::cout << "VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME supported" << std::endl;
+        }
     }
     std::cout << "==== Supported extensions ====" << std::endl;
     std::cout << "VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME: " << synchronization2_supported_ << std::endl;
@@ -141,6 +150,8 @@ struct Device {
     if (synchronization2_supported_) {
       extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
     }
+    extensions.push_back(VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
+    extensions.push_back(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
     const float queue_priorities = 1.0f;
     VkPhysicalDeviceSynchronization2FeaturesKHR sync2_features{
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR,
@@ -164,11 +175,26 @@ struct Device {
 
     CHK(vkCreateDevice(vkpd, &device_ci, nullptr, &device_));
 
+    vkGetMemoryFdKHR_ = reinterpret_cast<PFN_vkGetMemoryFdKHR>(vkGetDeviceProcAddr(device_, "vkGetMemoryFdKHR"));
+
+    VkPhysicalDeviceMemoryProperties phys_memory_props;
+    vkGetPhysicalDeviceMemoryProperties(vkpd, &phys_memory_props);
+    std::vector<VkExternalMemoryHandleTypeFlagsKHR> handle_types(phys_memory_props.memoryTypeCount, 0);
+    for (uint32_t i = 0; i < phys_memory_props.memoryTypeCount; ++i) {
+      if (phys_memory_props.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
+        handle_types[i] = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+      }
+    }
+
+    // const VkExternalMemoryHandleTypeFlagsKHR handle_types[] = {
+    //   VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT};
+    // const VkExternalMemoryHandleTypeFlagsKHR handle_type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
     const VmaAllocatorCreateInfo allocator_info = {
       .physicalDevice = vkpd,
       .device = device_,
       .instance = instance.instance_,
       .vulkanApiVersion = VK_API_VERSION_1_2,
+      .pTypeExternalMemoryHandleTypes = handle_types.data(),
     };
     CHK(vmaCreateAllocator(&allocator_info, &allocator_));
   }
@@ -186,6 +212,8 @@ struct Device {
   bool synchronization2_supported_;
   uint32_t compute_queue_family_index_;
   VmaAllocator allocator_;
+
+  PFN_vkGetMemoryFdKHR vkGetMemoryFdKHR_ = nullptr;
 };
 
 struct ComputeQueue {
