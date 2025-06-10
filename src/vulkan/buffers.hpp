@@ -41,6 +41,7 @@ VkResult createExportDeviceBuffer(VmaAllocator allocator,
 {
   VkBufferUsageFlags usage =
     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+    VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
     VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   VkExternalMemoryBufferCreateInfo external_memory_ci{
     .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO,
