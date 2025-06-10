@@ -190,7 +190,7 @@ struct Device {
     //   VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT};
     // const VkExternalMemoryHandleTypeFlagsKHR handle_type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
     const VmaAllocatorCreateInfo allocator_info = {
-      .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+      .flags = 0,
       .physicalDevice = vkpd,
       .device = device_,
       .instance = instance.instance_,

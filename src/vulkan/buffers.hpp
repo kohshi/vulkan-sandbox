@@ -42,8 +42,7 @@ VkResult createExportDeviceBuffer(VmaAllocator allocator,
   VkBufferUsageFlags usage =
     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
     VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-    VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-    VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   VkExternalMemoryBufferCreateInfo external_memory_ci{
     .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO,
     .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
@@ -58,7 +57,7 @@ VkResult createExportDeviceBuffer(VmaAllocator allocator,
   };
 
   VmaAllocationCreateInfo vma_alloc_ci{
-    .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+    .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,// needed for cuda interop
     .usage = VMA_MEMORY_USAGE_GPU_ONLY,
     .requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
   };
