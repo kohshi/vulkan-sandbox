@@ -37,6 +37,27 @@ private:
   vk::Stream stream_;
 };
 
+void* cast_vk_to_cu(const vk::DeviceBuffer& vk_buffer, const size_t buffer_size) {
+  cudaExternalMemoryHandleDesc external_memory_handle_desc;
+  external_memory_handle_desc.type = cudaExternalMemoryHandleTypeOpaqueFd;
+  external_memory_handle_desc.handle.fd = vk_buffer.fd_;
+  external_memory_handle_desc.size = buffer_size;
+  external_memory_handle_desc.flags = 0;
+
+  cudaExternalMemory_t external_memory;
+  std::cout << "external_memory_handle_desc.handle.fd: " << external_memory_handle_desc.handle.fd << std::endl;
+  CHK_CU(cudaImportExternalMemory(&external_memory, &external_memory_handle_desc));
+
+  cudaExternalMemoryBufferDesc external_memory_buffer_desc = {};
+  external_memory_buffer_desc.offset = 0;
+  external_memory_buffer_desc.size = buffer_size;
+  external_memory_buffer_desc.flags = 0;
+
+  void* cuda_buffer_ptr;
+  CHK_CU(cudaExternalMemoryGetMappedBuffer(&cuda_buffer_ptr, external_memory, &external_memory_buffer_desc));
+  return cuda_buffer_ptr;
+}
+
 void CudaInterop::run() {
   // Allocate input buffers
   const uint32_t n_elements = 32;
@@ -65,32 +86,16 @@ void CudaInterop::run() {
   CHK_CU(cudaMalloc((void**)&cu_d_input, buffer_size));
   CHK_CU(cudaMalloc((void**)&cu_d_output, buffer_size));
 
-  // Set input data.
-  for (uint32_t i = 0; i < n_elements; ++i) {
-    reinterpret_cast<int32_t*>(cu_h_input)[i] = i;
-  }
-  CHK_CU(cudaMemcpy(cu_d_input, cu_h_input, buffer_size, cudaMemcpyHostToDevice));
+  // // Set input data.
+  // for (uint32_t i = 0; i < n_elements; ++i) {
+  //   reinterpret_cast<int32_t*>(cu_h_input)[i] = i;
+  // }
+  // CHK_CU(cudaMemcpy(cu_d_input, cu_h_input, buffer_size, cudaMemcpyHostToDevice));
 
-
-  cudaExternalMemoryHandleDesc external_memory_handle_desc;
-  external_memory_handle_desc.type = cudaExternalMemoryHandleTypeOpaqueFd;
-  external_memory_handle_desc.handle.fd = vk_d_input_buffer_.fd_;
-  external_memory_handle_desc.size = buffer_size;
-  external_memory_handle_desc.flags = 0;
-
-  cudaExternalMemory_t external_memory;
-  std::cout << "external_memory_handle_desc.handle.fd: " << external_memory_handle_desc.handle.fd << std::endl;
-  CHK_CU(cudaImportExternalMemory(&external_memory, &external_memory_handle_desc));
-  cudaExternalMemoryBufferDesc external_memory_buffer_desc = {};
-  external_memory_buffer_desc.offset = 0;
-  external_memory_buffer_desc.size = buffer_size;
-  external_memory_buffer_desc.flags = 0;
-
-  void* d_input_buffer_ptr;
-  CHK_CU(cudaExternalMemoryGetMappedBuffer(&d_input_buffer_ptr, external_memory, &external_memory_buffer_desc));
+  void* vk_d_input_buffer_ptr = cast_vk_to_cu(vk_d_input_buffer_, buffer_size);
 
   // run_square_kernel(cu_d_input, cu_d_output, n_elements);
-  run_square_kernel((int*)d_input_buffer_ptr, cu_d_output, n_elements);
+  run_square_kernel((int*)vk_d_input_buffer_ptr, cu_d_output, n_elements);
 
   CHK_CU(cudaMemcpy(cu_h_output, cu_d_output, buffer_size, cudaMemcpyDeviceToHost));
 
