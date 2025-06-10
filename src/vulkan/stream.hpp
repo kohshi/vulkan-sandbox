@@ -157,6 +157,7 @@ void Stream::submit() {
   check();
   CHK(vkEndCommandBuffer(current_command_buf_));
 
+  // setup wait/signal value of submit gpu process time.
   uint64_t wait_value = timeline_value_;
   uint64_t signal_value = ++timeline_value_;
 
@@ -185,6 +186,18 @@ void Stream::submit() {
   CHK(vkQueueSubmit(queue_.queue_, 1, &submit_info, VK_NULL_HANDLE));
   submitted_command_bufs_.push_back(current_command_buf_);
   current_command_buf_ = VK_NULL_HANDLE;
+
+  // signal the end of cpu process time to start gpu process.
+  uint64_t ts_value;
+  CHK(vkGetSemaphoreCounterValue(device_.device_, timeline_semaphore_, &ts_value));
+  if (wait_value > ts_value) {// must signal the greater than current value.
+    VkSemaphoreSignalInfo signal_info {
+      .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO,
+      .semaphore = timeline_semaphore_,
+      .value = wait_value,
+    };
+    CHK(vkSignalSemaphore(device_.device_, &signal_info));
+  }
 }
 
 void Stream::synchronize() {
