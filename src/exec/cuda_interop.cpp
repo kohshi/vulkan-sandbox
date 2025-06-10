@@ -18,7 +18,9 @@ public:
     physical_device_(instance_),
     device_(instance_, physical_device_),
     vk_h_input_buffer_(device_),
+    vk_h_output_buffer_(device_),
     vk_d_input_buffer_(device_),
+    vk_d_output_buffer_(device_),
     compute_queue_(device_),
     command_pool_(device_),
     stream_(device_, compute_queue_, command_pool_) {}
@@ -31,7 +33,9 @@ private:
   vk::PhysicalDevice physical_device_;
   vk::Device device_;
   vk::StagingBuffer vk_h_input_buffer_;
+  vk::StagingBuffer vk_h_output_buffer_;
   vk::DeviceBuffer vk_d_input_buffer_;
+  vk::DeviceBuffer vk_d_output_buffer_;
   vk::ComputeQueue compute_queue_;
   vk::CommandPool command_pool_;
   vk::Stream stream_;
@@ -65,7 +69,9 @@ void CudaInterop::run() {
   // const VkDeviceSize memory_size = buffer_size;
 
   vk_h_input_buffer_ = vk::StagingBuffer(device_, buffer_size);
+  vk_h_output_buffer_ = vk::StagingBuffer(device_, buffer_size);
   vk_d_input_buffer_ = vk::DeviceBuffer(device_, buffer_size);
+  vk_d_output_buffer_ = vk::DeviceBuffer(device_, buffer_size);
 
   // Set input data.
   for (uint32_t i = 0; i < n_elements; ++i) {
@@ -77,37 +83,61 @@ void CudaInterop::run() {
   stream_.synchronize();
 
   // CUDA
+  const bool in_cu = false;
+  const bool out_cu = false;
   int* cu_h_input;
   int* cu_h_output;
   int* cu_d_input;
   int* cu_d_output;
-  CHK_CU(cudaMallocHost((void**)&cu_h_input, buffer_size));
-  CHK_CU(cudaMallocHost((void**)&cu_h_output, buffer_size));
-  CHK_CU(cudaMalloc((void**)&cu_d_input, buffer_size));
-  CHK_CU(cudaMalloc((void**)&cu_d_output, buffer_size));
-
-  // // Set input data.
-  // for (uint32_t i = 0; i < n_elements; ++i) {
-  //   reinterpret_cast<int32_t*>(cu_h_input)[i] = i;
-  // }
-  // CHK_CU(cudaMemcpy(cu_d_input, cu_h_input, buffer_size, cudaMemcpyHostToDevice));
+  if (in_cu) {
+    CHK_CU(cudaMallocHost((void**)&cu_h_input, buffer_size));
+    CHK_CU(cudaMalloc((void**)&cu_d_input, buffer_size));
+    // Set input data.
+    for (uint32_t i = 0; i < n_elements; ++i) {
+      reinterpret_cast<int32_t*>(cu_h_input)[i] = i;
+    }
+    CHK_CU(cudaMemcpy(cu_d_input, cu_h_input, buffer_size, cudaMemcpyHostToDevice));
+  }
+  if (out_cu) {
+    CHK_CU(cudaMallocHost((void**)&cu_h_output, buffer_size));
+    CHK_CU(cudaMalloc((void**)&cu_d_output, buffer_size));
+  }
 
   void* vk_d_input_buffer_ptr = cast_vk_to_cu(vk_d_input_buffer_, buffer_size);
+  void* vk_d_output_buffer_ptr = cast_vk_to_cu(vk_d_output_buffer_, buffer_size);
 
-  // run_square_kernel(cu_d_input, cu_d_output, n_elements);
-  run_square_kernel((int*)vk_d_input_buffer_ptr, cu_d_output, n_elements);
+  // Now try the kernel
+  run_square_kernel(
+    (in_cu)  ? (int*)cu_d_input  : (int*)vk_d_input_buffer_ptr,
+    (out_cu) ? (int*)cu_d_output : (int*)vk_d_output_buffer_ptr,
+    n_elements);
 
-  CHK_CU(cudaMemcpy(cu_h_output, cu_d_output, buffer_size, cudaMemcpyDeviceToHost));
+  stream_.begin();
+  stream_.copy(vk_d_output_buffer_.buffer_, vk_h_output_buffer_.buffer_, buffer_size);
+  stream_.submit();
+  stream_.synchronize();
+  if (out_cu) {
+    CHK_CU(cudaMemcpy(cu_h_output, cu_d_output, buffer_size, cudaMemcpyDeviceToHost));
+  }
 
   // Print the input data
+  std::cout << "Input data " << (in_cu ? "cu" : "vk") << ": " << std::endl;
   for (uint32_t i = 0; i < n_elements; ++i) {
-    //std::cout << cu_h_input[i] << " ";
-    std::cout << reinterpret_cast<int32_t*>(vk_h_input_buffer_.mapped_)[i] << " ";
+    if (in_cu) {
+      std::cout << cu_h_input[i] << " ";
+    } else {
+      std::cout << reinterpret_cast<int32_t*>(vk_h_input_buffer_.mapped_)[i] << " ";
+    }
   }
   std::cout << std::endl;
 
+  std::cout << "Output data " << (out_cu ? "cu" : "vk") << ": " << std::endl;
   for (uint32_t i = 0; i < n_elements; ++i) {
-    std::cout << cu_h_output[i] << " ";
+    if (out_cu) {
+      std::cout << cu_h_output[i] << " ";
+    } else {
+      std::cout << reinterpret_cast<int32_t*>(vk_h_output_buffer_.mapped_)[i] << " ";
+    }
   }
   std::cout << std::endl;
 
