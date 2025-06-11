@@ -39,9 +39,6 @@ public:
   std::vector<VkCommandBuffer> submitted_command_bufs_;
   VkSemaphore timeline_semaphore_;
   uint64_t timeline_value_;
-
-  const bool synchronize2_supported_ = true;
-  PFN_vkCmdPipelineBarrier2KHR vkCmdPipelineBarrier2KHR_ = nullptr;
 };
 
 Stream::Stream(Device& device, ComputeQueue& queue, CommandPool& command_pool) :
@@ -61,12 +58,6 @@ Stream::Stream(Device& device, ComputeQueue& queue, CommandPool& command_pool) :
       .pNext = &timeline_semaphore_ci,
     };
     CHK(vkCreateSemaphore(device_.device_, &semaphoreCI, nullptr, &timeline_semaphore_));
-  
-  if (synchronize2_supported_) {
-    // Get process addresses
-    vkCmdPipelineBarrier2KHR_ = reinterpret_cast<PFN_vkCmdPipelineBarrier2KHR>(
-      vkGetDeviceProcAddr(device_.device_, "vkCmdPipelineBarrier2KHR"));
-  }
 }
 
 void Stream::begin() {
@@ -118,7 +109,7 @@ void Stream::dispatch(ComputeShader<T>& cs, uint32_t group_x, uint32_t group_y, 
 void Stream::barrier() {
   check();
 
-  if (synchronize2_supported_) {
+  if (device_.vkCmdPipelineBarrier2KHR_) {
     VkMemoryBarrier2KHR memory_barrier {
       .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2_KHR,
       .srcStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -135,7 +126,7 @@ void Stream::barrier() {
       .imageMemoryBarrierCount = 0,
       .pImageMemoryBarriers = nullptr,
     };
-    vkCmdPipelineBarrier2KHR_(current_command_buf_, &dependency_info);
+    device_.vkCmdPipelineBarrier2KHR_(current_command_buf_, &dependency_info);
   } else {
     VkMemoryBarrier memory_barrier{
       .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,

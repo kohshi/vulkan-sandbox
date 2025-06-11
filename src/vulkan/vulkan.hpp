@@ -76,10 +76,10 @@ struct PhysicalDevice {
                 << VK_VERSION_PATCH(props[i].apiVersion) << std::endl;
     }
     physical_device_ = phys_devs[gpu_idx];
-    phys_device_prop_ = props[gpu_idx];
+    VkPhysicalDeviceProperties phys_device_prop = props[gpu_idx];
 
-    const VkPhysicalDeviceLimits& limits = phys_device_prop_.limits;
-    std::cout << "Using GPU " << gpu_idx << ": " << phys_device_prop_.deviceName << std::endl;
+    const VkPhysicalDeviceLimits& limits = phys_device_prop.limits;
+    std::cout << "Using GPU " << gpu_idx << ": " << phys_device_prop.deviceName << std::endl;
     std::cout << "==== Physical device limits ====" << std::endl;
     std::cout << "maxUniformBufferRange: " << limits.maxUniformBufferRange << std::endl;
     std::cout << "maxStorageBufferRange: " << limits.maxStorageBufferRange << std::endl;
@@ -87,11 +87,12 @@ struct PhysicalDevice {
     std::cout << "maxMemoryAllocationCount: " << limits.maxMemoryAllocationCount << std::endl;
     std::cout << "maxSamplerAllocationCount: " << limits.maxSamplerAllocationCount << std::endl;
 
-    vkGetPhysicalDeviceMemoryProperties(physical_device_, &phys_memory_props_);
+    VkPhysicalDeviceMemoryProperties phys_memory_props;
+    vkGetPhysicalDeviceMemoryProperties(physical_device_, &phys_memory_props);
 
-    for (uint32_t i = 0; i < phys_memory_props_.memoryTypeCount; ++i) {
-      std::cout << "Memory type " << i << ": " << phys_memory_props_.memoryTypes[i].heapIndex << std::endl;
-      std::cout << "  propertyFlags: " << std::hex << phys_memory_props_.memoryTypes[i].propertyFlags << std::dec << std::endl;
+    for (uint32_t i = 0; i < phys_memory_props.memoryTypeCount; ++i) {
+      std::cout << "Memory type " << i << ": " << phys_memory_props.memoryTypes[i].heapIndex << std::endl;
+      std::cout << "  propertyFlags: " << std::hex << phys_memory_props.memoryTypes[i].propertyFlags << std::dec << std::endl;
     }
   }
   PhysicalDevice() = delete;
@@ -102,8 +103,6 @@ struct PhysicalDevice {
   ~PhysicalDevice() = default;
   
   VkPhysicalDevice physical_device_;
-  VkPhysicalDeviceProperties phys_device_prop_;
-  VkPhysicalDeviceMemoryProperties phys_memory_props_;
 };
 
 struct Device {
@@ -152,9 +151,11 @@ struct Device {
     }
     extensions.push_back(VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
     extensions.push_back(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
+    extensions.push_back(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
     const float queue_priorities = 1.0f;
     VkPhysicalDeviceSynchronization2FeaturesKHR sync2_features{
       .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR,
+      .pNext = nullptr,
       .synchronization2 = VK_TRUE,
     };
 
@@ -175,7 +176,12 @@ struct Device {
 
     CHK(vkCreateDevice(vkpd, &device_ci, nullptr, &device_));
 
+    // Get process address
     vkGetMemoryFdKHR_ = reinterpret_cast<PFN_vkGetMemoryFdKHR>(vkGetDeviceProcAddr(device_, "vkGetMemoryFdKHR"));
+    if (synchronization2_supported_) {
+      vkCmdPipelineBarrier2KHR_ = reinterpret_cast<PFN_vkCmdPipelineBarrier2KHR>(
+      vkGetDeviceProcAddr(device_, "vkCmdPipelineBarrier2KHR"));
+    }
 
     VkPhysicalDeviceMemoryProperties phys_memory_props;
     vkGetPhysicalDeviceMemoryProperties(vkpd, &phys_memory_props);
@@ -186,9 +192,6 @@ struct Device {
       }
     }
 
-    // const VkExternalMemoryHandleTypeFlagsKHR handle_types[] = {
-    //   VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT};
-    // const VkExternalMemoryHandleTypeFlagsKHR handle_type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
     const VmaAllocatorCreateInfo allocator_info = {
       .flags = 0,
       .physicalDevice = vkpd,
@@ -215,6 +218,7 @@ struct Device {
   VmaAllocator allocator_;
 
   PFN_vkGetMemoryFdKHR vkGetMemoryFdKHR_ = nullptr;
+  PFN_vkCmdPipelineBarrier2KHR vkCmdPipelineBarrier2KHR_ = nullptr;
 };
 
 struct ComputeQueue {
