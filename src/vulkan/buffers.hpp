@@ -11,7 +11,7 @@ namespace vk {
 
 namespace {
 
-VkResult createBuffer(VmaAllocator allocator,
+VkResult create_buffer(VmaAllocator allocator,
   const VkDeviceSize buffer_size,
   const VkBufferUsageFlags usage,
   const VkMemoryPropertyFlags prop_flags,
@@ -34,7 +34,7 @@ VkResult createBuffer(VmaAllocator allocator,
   return VK_SUCCESS;
 }
 
-VkResult createExportDeviceBuffer(VmaAllocator allocator,
+VkResult create_export_device_buffer(VmaAllocator allocator,
   const VkDeviceSize buffer_size,
   VkBuffer& buffer,
   VmaAllocation& allocation)
@@ -145,7 +145,7 @@ VkResult StagingBuffer::allocate(const size_t size) {
     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
   VmaAllocationCreateFlags alloc_flags =
     VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-  createBuffer(allocator,
+  create_buffer(allocator,
     size, usage, props,
     alloc_flags,
     buffer_, allocation_);
@@ -220,7 +220,7 @@ VkResult DeviceBuffer::allocate(const size_t size) {
   // VkMemoryPropertyFlags props =
   //   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
   // VmaAllocationCreateFlags alloc_flags = 0;
-  createExportDeviceBuffer(allocator,
+  create_export_device_buffer(allocator,
     size,
     buffer_, allocation_);
 
@@ -313,7 +313,7 @@ VkResult UniformBuffer::allocate(const size_t size) {
     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
   VmaAllocationCreateFlags alloc_flags =
     VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-  createBuffer(allocator,
+  create_buffer(allocator,
     size, usage, props,
     alloc_flags,
     buffer_, allocation_);
