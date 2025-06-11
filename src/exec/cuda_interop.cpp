@@ -17,10 +17,10 @@ public:
     instance_(),
     physical_device_(instance_),
     device_(instance_, physical_device_),
-    vk_h_input_buffer_(device_),
-    vk_h_output_buffer_(device_),
-    vk_d_input_buffer_(device_),
-    vk_d_output_buffer_(device_),
+    vk_h_input_buffer_(device_, 0),
+    vk_h_output_buffer_(device_, 0),
+    vk_d_input_buffer_(device_, 0, true),
+    vk_d_output_buffer_(device_, 0, true),
     compute_queue_(device_),
     command_pool_(device_),
     stream_(device_, compute_queue_, command_pool_) {}
@@ -70,8 +70,8 @@ void CudaInterop::run() {
 
   vk_h_input_buffer_ = vk::StagingBuffer(device_, buffer_size);
   vk_h_output_buffer_ = vk::StagingBuffer(device_, buffer_size);
-  vk_d_input_buffer_ = vk::DeviceBuffer(device_, buffer_size);
-  vk_d_output_buffer_ = vk::DeviceBuffer(device_, buffer_size);
+  vk_d_input_buffer_ = vk::DeviceBuffer(device_, buffer_size, true);
+  vk_d_output_buffer_ = vk::DeviceBuffer(device_, buffer_size, true);
 
   // Set input data.
   for (uint32_t i = 0; i < n_elements; ++i) {

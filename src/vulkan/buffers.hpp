@@ -71,10 +71,7 @@ VkResult create_export_device_buffer(VmaAllocator allocator,
 struct StagingBuffer
 {
   StagingBuffer(Device& device,
-                const size_t size = 0) :
-  device_(&device) {
-    CHK(allocate(size));
-  }
+                const size_t size);
   StagingBuffer() = delete;
   StagingBuffer(const StagingBuffer&) = delete;
   StagingBuffer& operator=(const StagingBuffer&) = delete;
@@ -100,9 +97,7 @@ struct StagingBuffer
     s.mapped_ = nullptr;
     return *this;
   }
-  ~StagingBuffer() {
-    free();
-  }
+  ~StagingBuffer();
 
   Device* device_;
   VkBuffer buffer_;
@@ -113,26 +108,15 @@ private:
   VkResult allocate(const size_t size);
 };
 
-void StagingBuffer::free() {
-  if (device_ == nullptr) return;
-  if (mapped_ != nullptr) {
-    vmaUnmapMemory(device_->allocator_, allocation_);
-    mapped_ = nullptr;
-  }
-  if (buffer_ != VK_NULL_HANDLE) {
-    vmaDestroyBuffer(device_->allocator_, buffer_, allocation_);
-    buffer_ = VK_NULL_HANDLE;
-    allocation_ = VK_NULL_HANDLE;
-  }
-}
-
-VkResult StagingBuffer::allocate(const size_t size) {
+StagingBuffer::StagingBuffer(Device& device, const size_t size) :
+device_(&device)
+{
   if (size == 0) {
     // disallowed 0 size memory
     buffer_ = VK_NULL_HANDLE;
     allocation_ = VK_NULL_HANDLE;
     mapped_ = nullptr;
-    return VK_SUCCESS;
+    return;
   }
   
   VmaAllocator allocator = device_->allocator_;
@@ -151,16 +135,26 @@ VkResult StagingBuffer::allocate(const size_t size) {
     buffer_, allocation_);
   // Map the buffer memory
   CHK(vmaMapMemory(allocator, allocation_, &mapped_));
-  return VK_SUCCESS;
+}
+
+StagingBuffer::~StagingBuffer() {
+  if (device_ == nullptr) return;
+  if (mapped_ != nullptr) {
+    vmaUnmapMemory(device_->allocator_, allocation_);
+    mapped_ = nullptr;
+  }
+  if (buffer_ != VK_NULL_HANDLE) {
+    vmaDestroyBuffer(device_->allocator_, buffer_, allocation_);
+    buffer_ = VK_NULL_HANDLE;
+    allocation_ = VK_NULL_HANDLE;
+  }
 }
 
 struct DeviceBuffer
 {
   DeviceBuffer(Device& device,
-               const size_t size = 0) :
-  device_(&device) {
-    CHK(allocate(size));
-  }
+              const size_t size,
+              const bool export_fd);
   DeviceBuffer() = delete;
   DeviceBuffer(const DeviceBuffer&) = delete;
   DeviceBuffer& operator=(const DeviceBuffer&) = delete;
@@ -186,9 +180,7 @@ struct DeviceBuffer
     s.fd_ = -1;
     return *this;
   }
-  virtual ~DeviceBuffer() {
-    free();
-  }
+  ~DeviceBuffer();
 
   Device* device_;
   VkBuffer buffer_;
@@ -199,7 +191,49 @@ private:
   VkResult allocate(const size_t size);
 };
 
-void DeviceBuffer::free() {
+DeviceBuffer::DeviceBuffer(Device& device,
+  const size_t size,
+  const bool export_fd) :
+device_(&device)
+{
+  if (size == 0) {
+    // disallowed 0 size memory
+    buffer_ = VK_NULL_HANDLE;
+    allocation_ = VK_NULL_HANDLE;
+    return;
+  }
+
+  VmaAllocator allocator = device_->allocator_;
+  if (export_fd) {
+    create_export_device_buffer(allocator,
+      size,
+      buffer_, allocation_);
+
+    VmaAllocationInfo alloc_info;
+    vmaGetAllocationInfo(allocator, allocation_, &alloc_info);
+    VkMemoryGetFdInfoKHR get_fd_info{
+      .sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR,
+      .memory = alloc_info.deviceMemory,
+      .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
+    };
+    CHK(device_->vkGetMemoryFdKHR_(device_->device_, &get_fd_info, &fd_));
+    assert(fd_ > 0);
+  } else {
+    VkBufferUsageFlags usage =
+      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+      VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+      VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    VkMemoryPropertyFlags props =
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    VmaAllocationCreateFlags alloc_flags = 0;
+    create_buffer(allocator,
+      size, usage, props,
+      alloc_flags,
+      buffer_, allocation_);
+  }
+}
+
+DeviceBuffer::~DeviceBuffer() {
   if (device_ == nullptr) return;
   if (buffer_ != VK_NULL_HANDLE) {
     vmaDestroyBuffer(device_->allocator_, buffer_, allocation_);
@@ -208,42 +242,10 @@ void DeviceBuffer::free() {
   }
 }
 
-VkResult DeviceBuffer::allocate(const size_t size) {
-  if (size == 0) {
-    // disallowed 0 size memory
-    buffer_ = VK_NULL_HANDLE;
-    allocation_ = VK_NULL_HANDLE;
-    return VK_SUCCESS;
-  }
-
-  VmaAllocator allocator = device_->allocator_;
-  // VkMemoryPropertyFlags props =
-  //   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-  // VmaAllocationCreateFlags alloc_flags = 0;
-  create_export_device_buffer(allocator,
-    size,
-    buffer_, allocation_);
-
-  VmaAllocationInfo alloc_info;
-  vmaGetAllocationInfo(allocator, allocation_, &alloc_info);
-  VkMemoryGetFdInfoKHR get_fd_info{
-    .sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR,
-    .memory = alloc_info.deviceMemory,
-    .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
-  };
-  CHK(device_->vkGetMemoryFdKHR_(device_->device_, &get_fd_info, &fd_));
-  assert(fd_ > 0);
-  return VK_SUCCESS;
-}
-
-
 struct UniformBuffer
 {
   UniformBuffer(Device& device,
-                const size_t size = 0) :
-  device_(&device) {
-    CHK(allocate(size));
-  }
+                const size_t size);
   UniformBuffer() = delete;
   UniformBuffer(const UniformBuffer&) = delete;
   UniformBuffer& operator=(const UniformBuffer&) = delete;
@@ -269,39 +271,23 @@ struct UniformBuffer
     s.mapped_ = nullptr;
     return *this;
   }
-  ~UniformBuffer() {
-    free();
-  }
+  ~UniformBuffer();
 
   Device* device_;
   VkBuffer buffer_;
   VmaAllocation allocation_;
   void* mapped_;
-private:
-  void free();
-  VkResult allocate(const size_t size);
 };
 
-void UniformBuffer::free() {
-  if (device_ == nullptr) return;
-  if (mapped_ != nullptr) {
-    vmaUnmapMemory(device_->allocator_, allocation_);
-    mapped_ = nullptr;
-  }
-  if (buffer_ != VK_NULL_HANDLE) {
-    vmaDestroyBuffer(device_->allocator_, buffer_, allocation_);
-    buffer_ = VK_NULL_HANDLE;
-    allocation_ = VK_NULL_HANDLE;
-  }
-}
-
-VkResult UniformBuffer::allocate(const size_t size) {
+UniformBuffer::UniformBuffer(Device& device, const size_t size) :
+device_(nullptr)
+{
   if (size == 0) {
     // disallowed 0 size memory
     buffer_ = VK_NULL_HANDLE;
     allocation_ = VK_NULL_HANDLE;
     mapped_ = nullptr;
-    return VK_SUCCESS;
+    return;
   }
   VmaAllocator allocator = device_->allocator_;
   VkBufferUsageFlags usage =
@@ -319,6 +305,19 @@ VkResult UniformBuffer::allocate(const size_t size) {
     buffer_, allocation_);
   // Map the buffer memory
   CHK(vmaMapMemory(allocator, allocation_, &mapped_));
-  return VK_SUCCESS;
 }
+
+UniformBuffer::~UniformBuffer() {
+  if (device_ == nullptr) return;
+  if (mapped_ != nullptr) {
+    vmaUnmapMemory(device_->allocator_, allocation_);
+    mapped_ = nullptr;
+  }
+  if (buffer_ != VK_NULL_HANDLE) {
+    vmaDestroyBuffer(device_->allocator_, buffer_, allocation_);
+    buffer_ = VK_NULL_HANDLE;
+    allocation_ = VK_NULL_HANDLE;
+  }
+}
+
 };// namespace vk

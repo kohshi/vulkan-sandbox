@@ -29,11 +29,11 @@ public:
     vk::ComputeShader<PushConstants>(device_, descriptor_pool_,
       "build/shaders/shader.comp.spv")
   }},
-  uniform_buffer_(device_),
-  input_buffer_(device_),
-  d_input_buffer_(device_),
-  output_buffer_(device_),
-  d_output_buffer_(device_) {}
+  uniform_buffer_(device_, 0),
+  input_buffer_(device_, 0),
+  d_input_buffer_(device_, 0, false),
+  output_buffer_(device_, 0),
+  d_output_buffer_(device_, 0, false) {}
   ~Application() {}
 
   void run();
@@ -78,8 +78,8 @@ void Application::run() {
 
   input_buffer_ = vk::StagingBuffer(device_, memory_size);
   output_buffer_ = vk::StagingBuffer(device_, memory_size);
-  d_input_buffer_ = vk::DeviceBuffer(device_, memory_size);
-  d_output_buffer_ = vk::DeviceBuffer(device_, memory_size);
+  d_input_buffer_ = vk::DeviceBuffer(device_, memory_size, false);
+  d_output_buffer_ = vk::DeviceBuffer(device_, memory_size, false);
 
   // Set input data.
   for (uint32_t i = 0; i < n_elements; ++i) {
